@@ -151,50 +151,37 @@ def gen_random_anns(driver,times,save_path):
     window_height = driver.get_window_size()['height'] # 窗口高度
     # print(width,window_height)
     # driver.set_window_size(width,window_height)
-    ratio = 0.3
-    total_nums = 10
     img_num = 0
     # elements = driver.find_elements(By.XPATH,f"//*")
     tag_results = get_tag_elements(driver,tag_names)
     # 根据规则查找
     results = get_class_contains_elements(driver, search_str)
     results = set(results) | set(tag_results)
+    
     img_path = os.path.join(save_path,"img")
     xml_path = os.path.join(save_path,"xml")
-
+    
+    cls_names = []
+    box_lists =[]
+    for e in results:
+        try:
+            t1=time.time()
+            x,y,w,h = int(e.rect['x']),int(e.rect['y']),int(e.rect['width']),int(e.rect['height'])
+            t2=time.time()
+            print("cost :",t2-t1)
+            box_lists.append([x,y,x+w,y+h])
+            cls_names.append(e.tag_name)
+        except:
+            continue
+    
     make_dir(save_path)
     make_dir(img_path)
     make_dir(xml_path)
-    while img_num < total_nums:
-        # 上下滚动，一段段截屏
-        for i in range(times):
-            if i > 0:
-                driver.execute_script(f'document.documentElement.scrollTop={window_height*(i*ratio)};')
-            time.sleep(1)
-            driver.get_screenshot_as_file(os.path.join(img_path,f"{img_num}.png")) # 保存截图
-            cls_names = []
-            box_lists =[]
-            
-            print()
-
-            for e in results:
-                try:
-                    t1=time.time()
-                    x,y,w,h = int(e.rect['x']),int(e.rect['y']),int(e.rect['width']),int(e.rect['height'])
-                    t2=time.time()
-                    print("cost :",t2-t1)
-                    y -= window_height*(i*ratio)
-                    thresh = 0.2
-                    min_height = 3
-                    if y + h < 0 or  y > window_height or (y+h) / h < thresh or (window_height-y) /h < thresh or h < min_height :
-                        continue
-                    box_lists.append([x,y,x+w,y+h])
-                    cls_names.append(e.tag_name)
-                except:
-                    continue
-            write_xml(img_path,str(img_num),img_path,width,window_height,len(box_lists),cls_names,box_lists,xml_path)
-            img_num += 1
-            print(f"saved imgs {img_num}")
+    img = get_screen_full(driver)
+    cv2.imwrite(img_path+"/0.png",img)        
+    write_xml(img_path,str(img_num),img_path,width,window_height,len(box_lists),cls_names,box_lists,xml_path)
+    img_num += 1
+    print(f"saved imgs {img_num}")
 
 def get_screen_full(driver):
     # 全屏截图的关键，用js获取页面的宽高
@@ -213,9 +200,9 @@ def init_driver():
 
     #打开谷歌浏览器
     chrome_options = webdriver.ChromeOptions()
-    # chrome_options.add_argument('headless')                                             # 无头模式下才能截长图
-    # driver_width, driver_height = pyautogui.size()                                      # 通过pyautogui方法获得屏幕尺寸
-    # chrome_options.add_argument('--window-size=%sx%s' % (driver_width, driver_height))  # 设置浏览器窗口大小
+    chrome_options.add_argument('headless')                                             # 无头模式下才能截长图
+    driver_width, driver_height = pyautogui.size()                                      # 通过pyautogui方法获得屏幕尺寸
+    chrome_options.add_argument('--window-size=%sx%s' % (driver_width, driver_height))  # 设置浏览器窗口大小
     # 谷歌浏览器
     driver = webdriver.Chrome(options=chrome_options)
     
@@ -276,7 +263,7 @@ if __name__ == "__main__":
     change_address(post_id)
 
     # 浏览器全屏截图 
-    # img = get_screen_full(driver)
+    
     # img_ = img.copy()
 
     # 根据标签名查找
@@ -290,6 +277,7 @@ if __name__ == "__main__":
                 "em",       # 文本定义为强调内容
                 "table",    # 表格
                 "select",
+                "a"
                 ]   # 下拉框
 
     # tag_results = get_tag_elements(tag_names)
@@ -299,12 +287,12 @@ if __name__ == "__main__":
     # results = get_class_contains_elements(search_str)
 
     # results = set(results) | set(tag_results)
-
+    
     # print(len(results))
     # draw(img_,results)
 
     # show(all_results)
     # print(len(all_results))
 
-    save_path = "F:/Datasets/UIED/tmp"
+    save_path = "D:/workspace/zxUIED/zxUIED/tmp"
     gen_random_anns(driver,10,save_path)
