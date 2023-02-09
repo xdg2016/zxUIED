@@ -147,10 +147,60 @@ def write_xml(folder: str, img_name: str, path: str, img_width: int, img_height:
         doc.writexml(f, indent='', addindent='\t', newl='\n', encoding="utf-8")
 
 def make_dir(path):
+    '''
+    创建目录
+    '''
     if not os.path.exists(path):
         os.makedirs(path)
 
-def gen_random_anns(driver,times,save_path):
+
+def save_img_xml(driver,img_path,xml_path,img,cls_names,box_list,url_id):
+    '''
+    裁剪一块块的图片，并取出对应的标签
+    '''
+    img_num = 0
+    js_height = "return window.screen.availHeight"
+    height = driver.execute_script(js_height)
+    ratio = 0.3
+    step = int(height * ratio)
+    h,w = img.shape[:2]
+    # 裁剪的个数
+    total_num = h // step
+    min_h = int(height * 2/3)
+
+    while img_num < total_num:
+        # 裁剪图片
+        y_start = img_num*step
+        y_end = img_num*step+height
+        save_img = img[y_start : y_end,:]
+        if save_img.shape[0] < min_h:
+            break
+        choosed_coords = []
+        choosed_names = []
+        for name,coord in zip(cls_names,box_list):
+            x1,y1,x2,y2 = coord
+            # 坐标重新映射到[0,height]之间
+            y1 -= y_start
+            y2 -= y_start
+            # 只保留当前页范围的元素
+            if y2 < 0 or y1 >= height:
+                continue
+            # 边界裁剪
+            if y1 < 0:
+                y1 = 0
+            if y2 >= height:
+                y2 = height-1
+            choosed_coords.append([x1,y1,x2,y2])
+            choosed_names.append(name)
+        img_name = str(url_id) + "_" + str(img_num)
+        # 保存图片
+        cv2.imwrite(os.path.join(img_path,img_name+".jpg"),save_img)
+        # 保存xml
+        write_xml(img_path,img_name,img_path,w,height,len(choosed_coords),choosed_names,choosed_coords,xml_path)
+        img_num += 1
+    print(f"{img_num} imgs saved in {img_path}, xmls saved in {xml_path}")
+
+def gen_random_anns(driver,img,save_path,url_id):
     '''
     随机截图并生成标注xml文件
     '''
@@ -173,6 +223,10 @@ def gen_random_anns(driver,times,save_path):
     
     img_path = os.path.join(save_path,"img")
     xml_path = os.path.join(save_path,"xml")
+    # 检查保存路径
+    make_dir(save_path)
+    make_dir(img_path)
+    make_dir(xml_path)
     
     print(f"search elements done, cost {time.time()-t1}")
     print("tag results:",len(tag_results))
@@ -199,14 +253,8 @@ def gen_random_anns(driver,times,save_path):
       
     print("find cost:",time.time()-t1)
     
-    # 检查保存路径
-    make_dir(save_path)
-    make_dir(img_path)
-    make_dir(xml_path)
-    # 保存xml
-    write_xml(img_path,str(img_num),img_path,width,window_height,len(box_lists),cls_names,box_lists,xml_path)
-    img_num += 1
-    print(f"saved imgs {img_num}")
+    # 保存图片和xml
+    save_img_xml(driver,img_path,xml_path,img,cls_names,box_lists,url_id)
 
 def init_driver():
     '''
@@ -259,7 +307,9 @@ def change_address(postal):
 
 
 def save_screen_to_png(driver):
-
+    '''
+    截图全屏图片
+    '''
     driver.implicitly_wait(10)
     
     # 模拟人滚动滚动条,处理图片懒加载问题
@@ -283,9 +333,13 @@ def save_screen_to_png(driver):
         height = driver.execute_script("return document.documentElement.scrollHeight")
         driver.set_window_size(width,height)
         print("shot: ", width, height)
-        driver.save_screenshot("F:/Datasets/UIED/tmp2/img/0.png")
+        img_bin = driver.get_screenshot_as_png()
+        image = np.asarray(bytearray(img_bin), dtype="uint8")
+        img = cv2.imdecode(image, cv2.IMREAD_COLOR)
+        return img
     except Exception as e:
         print(e)
+        return None
 
 def get_screen_full(driver):
     '''
@@ -328,7 +382,7 @@ if __name__ == "__main__":
     print("load page and change address cost:",t1-st)
 
     # 保存全屏截图
-    save_screen_to_png(driver)
+    img = save_screen_to_png(driver)
     t2 = time.time()
     print("save screen cost:",t2-t1)
 
@@ -348,10 +402,29 @@ if __name__ == "__main__":
                   "img", 
                   'logo', ]
     
-    save_path = "F:/Datasets/UIED/tmp2"
+    tag_names = ["button",  # 按钮
+            "img",      # 图片
+            # "i",        # ico图标
+            # "svg",      # svg格式图标
+            # "use",      # SVG图标的节点获取
+            "input",    # 输入框
+            # "span",     # 带背景的区域
+            # "em",       # 文本定义为强调内容
+            # "table",    # 表格
+            "select"
+        
+            ]  # 下拉框
+        
+    search_str = ["select", 'nav_a','nav-a','nav-a-content', 'a-button-inner',
+                'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text", 'a-declarative', 'a-meter',
+                'cr-lighthouse-term', "cr-helpful-text", "action-inner", "sign-in-tooltip-link", "nav-search-scope", 
+                "nav-hamburger-menu", "a-spacing-micro", "play-button-inner"]
+            
 
+    save_path = "F:/Datasets/UIED/tmp2"
+    url_id = 0
     # 查找元素
-    gen_random_anns(driver,10,save_path)
+    gen_random_anns(driver,img,save_path,url_id)
     et = time.time()
     print("gen random anns cost:",et-t2)
     print("total cost:",et-st)
