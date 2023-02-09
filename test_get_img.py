@@ -150,10 +150,12 @@ def gen_random_anns(driver,times,save_path):
     '''
     随机截图并生成标注xml文件
     '''
-    
+    # driver.maximize_window()
     width=driver.execute_script("return document.body.clientWidth")
-    window_height = driver.execute_script("return document.documentElement.scrollHeight")
+    window_height = driver.execute_script("return document.body.scrollHeight")
     driver.set_window_size(width,window_height)
+    # window_size = driver.get_window_size()
+    # width,window_height = window_size["width"],window_size["height"]
     print("shot: ", width, window_height)
     img_num = 0
     # elements = driver.find_elements(By.XPATH,f"//*")
@@ -295,7 +297,8 @@ def save_screen_to_png(driver):
                 js_move = "window.scrollTo(0,{})".format(k * 500)
                 print(js_move)
                 driver.execute_script(js_move)
-                time.sleep(0.2)
+                driver.implicitly_wait(10)
+                time.sleep(1)
                 height = driver.execute_script(js_height)
                 k += 1
             else:
@@ -321,13 +324,31 @@ def save_screen_to_png(driver):
         
         time.sleep(1)
         # 截图并关掉浏览器
-        driver.save_screenshot("./tmp/img/0.png")
+        driver.save_screenshot("F:/Datasets/UIED/tmp2/img/0.png")
         # driver.close()
 
  
     except Exception as e:
         print(e)
-    
+
+
+def get_screen_full(driver):
+    driver.implicitly_wait(20)
+    time.sleep(10)
+    # 全屏截图的关键，用js获取页面的宽高
+    width=driver.execute_script("return document.body.clientWidth")
+    height=driver.execute_script("return document.body.scrollHeight")
+    print(width,height)
+
+    # width, height = pyautogui.size()   
+    # print(width,height)
+    # 获取浏览器的宽高
+    driver.set_window_size(width,height)
+    # 截图base64
+    img_bin = driver.get_screenshot_as_png()
+    image = np.asarray(bytearray(img_bin), dtype="uint8")
+    img = cv2.imdecode(image, cv2.IMREAD_COLOR)
+    return img
 
 
 if __name__ == "__main__":
@@ -347,6 +368,9 @@ if __name__ == "__main__":
     change_address(post_id)
    
     save_screen_to_png(driver)
+    # img =  get_screen_full(driver)
+    # cv2.imwrite("F:/Datasets/UIED/tmp2/img/0.jpg",img)
+    # print("img shape:",img.shape)
     tag_names = ["button",  # 按钮
             "img",      # 图片
             "i",        # ico图标
@@ -361,6 +385,6 @@ if __name__ == "__main__":
             ]  # 下拉框
         
     search_str = ["title", "btn", "button", "arrow", "select", "ico", "img", 'logo', "action"]
-    save_path = "D:/workspace/zxUIED/zxUIED/tmp"
+    save_path = "F:/Datasets/UIED/tmp2"
     gen_random_anns(driver,10,save_path)
     # screenshot_to_png(url,driver,"./0.png")
