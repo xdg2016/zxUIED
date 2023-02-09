@@ -4,7 +4,7 @@ import pyautogui
 #引入selenium库中的 webdriver 模块
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-
+from multiprocessing.dummy import Pool as ThreadPool
 from selenium.webdriver.chrome.options import Options
 #引入time库
 import time
@@ -35,28 +35,29 @@ def get_class_contains_elements(driver,classes):
     '''
     all_results = []
     for cls in classes:
-        results =  driver.find_elements(By.XPATH, f"//*[contains(@class,'{cls}')]")
+        results = driver.find_elements(By.XPATH, f"//*[starts-with(@class,'{cls}')]")
+        # results =  driver.find_elements(By.XPATH, f"//*[class='{cls}']")
         all_results.extend(results)
     return all_results
 
-def draw(img,results,save_path = "anna.png"):
-    '''
-    将解析的结果画在图上
-    '''
-    for e in results:
-        try:
-            # print(e.rect)
-            x,y,w,h = int(e.rect['x']),int(e.rect['y']),int(e.rect['width']),int(e.rect['height'])
-            pt1 = x,y
-            pt2 = x+w,y+h
-            cv2.rectangle(img,pt1,pt2,color=(0,0,255),thickness=2)
-            cv2.putText(img, e.tag_name, (x,y-10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 3)
-        except:
-            continue
+# def draw(img,results,save_path = "anna.png"):
+#     '''
+#     将解析的结果画在图上
+#     '''
+#     for e in results:
+#         try:
+#             # print(e.rect)
+#             x,y,w,h = int(e.rect['x']),int(e.rect['y']),int(e.rect['width']),int(e.rect['height'])
+#             pt1 = x,y
+#             pt2 = x+w,y+h
+#             cv2.rectangle(img,pt1,pt2,color=(0,0,255),thickness=2)
+#             cv2.putText(img, e.tag_name, (x,y-10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 3)
+#         except:
+#             continue
 
-    # cv2.imshow("img",img_)
-    cv2.imwrite(save_path,img)
-    cv2.waitKey(0)
+#     # cv2.imshow("img",img_)
+#     cv2.imwrite(save_path,img)
+#     cv2.waitKey(0)
 
 def write_xml(folder: str, img_name: str, path: str, img_width: int, img_height: int, tag_num: int, tag_names: str, box_list:list,save_path:str):
     '''
@@ -146,15 +147,27 @@ def make_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
+
+cls_names = []
+box_lists = []
+
+def get_box_cls(e):
+    x,y,w,h = int(e.rect['x']),int(e.rect['y']),int(e.rect['width']),int(e.rect['height'])
+    if w<1000 and h<800:
+        box_lists.append([x,y,x+w,y+h])
+        cls_names.append(e.tag_name)
+
 def gen_random_anns(driver,times,save_path):
     '''
     随机截图并生成标注xml文件
     '''
-    
+    # driver.maximize_window()
     width=driver.execute_script("return document.body.clientWidth")
-    height = driver.execute_script("return document.documentElement.scrollHeight")
-    driver.set_window_size(width,height)
-    print("shot: ", width, height)
+    window_height = driver.execute_script("return document.body.scrollHeight")
+    driver.set_window_size(width,window_height)
+    # window_size = driver.get_window_size()
+    # width,window_height = window_size["width"],window_size["height"]
+    print("shot: ", width, window_height)
     img_num = 0
     # elements = driver.find_elements(By.XPATH,f"//*")
     tag_results = get_tag_elements(driver,tag_names)
@@ -165,19 +178,24 @@ def gen_random_anns(driver,times,save_path):
     img_path = os.path.join(save_path,"img")
     xml_path = os.path.join(save_path,"xml")
     
-    cls_names = []
-    box_lists =[]
-    for e in results:
-        try:
     
-            x,y,w,h = int(e.rect['x']),int(e.rect['y']),int(e.rect['width']),int(e.rect['height'])
+    use_mp = True
+    if use_mp:
+        datas = [data for data in results]
+        pool = ThreadPool(processes = 10)
+        pool.map(get_box_cls, datas)
+    else:
+        for e in results:
+            try:
+        
+                x,y,w,h = int(e.rect['x']),int(e.rect['y']),int(e.rect['width']),int(e.rect['height'])
 
-            # print("cost :",t2-t1)
-            box_lists.append([x,y,x+w,y+h])
-            cls_names.append(e.tag_name)
-        except:
-            continue
-    
+                # print("cost :",t2-t1)
+                box_lists.append([x,y,x+w,y+h])
+                cls_names.append(e.tag_name)
+            except:
+                continue
+    print("len(box_lists): ",len(box_lists))
     make_dir(save_path)
     make_dir(img_path)
     make_dir(xml_path)
@@ -188,40 +206,6 @@ def gen_random_anns(driver,times,save_path):
     img_num += 1
     print(f"saved imgs {img_num}")
 
-def screenshot_to_png(link,driver,save_img_path):
-    ''' 参数：网址
-        功能: 保存网址截图
-             解决了截图不全问题
-             解决了懒加载问题
-             保存俩种图片格式
-    '''
-
-    # 6> 模仿手动滑动滚动条，解决懒加载问题
-    try:
-        
-        while True:
-            if k * 500 < height:
-                js_move = "window.scrollTo(0,{})".format(k * 500)
-                print(js_move)
-                driver.execute_script(js_move)
-                time.sleep(0.2)
-                height = driver.execute_script(js_height)
-                k += 1
-            else:
-                break
- 
-        time.sleep(1)
- 
-        # 7>  # 直接截图截不全，调取最大网页截图
-        
-        time.sleep(1)
-        # 截图并关掉浏览器
-        driver.save_screenshot(save_img_path)
-        driver.close()
-
- 
-    except Exception as e:
-        print(e)
 
 
 def init_driver():
@@ -230,6 +214,7 @@ def init_driver():
     chrome_options = Options()
     # 2> 添加无头参数r,一定要使用无头模式，不然截不了全页面，只能截到你电脑的高度
     chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--log-level=3')                                        # 关闭打印selenium信息
     # 3> 为了解决一些莫名其妙的问题关闭 GPU 计算
     chrome_options.add_argument('--disable-gpu')
     # 4> 为了解决一些莫名其妙的问题浏览器不动
@@ -278,7 +263,7 @@ def change_address(postal):
 def save_screen_to_png(driver):
     driver.implicitly_wait(10)
 
-    driver.maximize_window()
+    # driver.maximize_window()
     # width=driver.execute_script("return document.body.clientWidth")
     # height=driver.execute_script("return document.documentElement.scrollHeight")
     
@@ -293,9 +278,10 @@ def save_screen_to_png(driver):
         while True:
             if k * 500 < height:
                 js_move = "window.scrollTo(0,{})".format(k * 500)
-                print(js_move)
+                # print(js_move)
                 driver.execute_script(js_move)
-                time.sleep(0.2)
+                
+                time.sleep(1)
                 height = driver.execute_script(js_height)
                 k += 1
             else:
@@ -321,13 +307,31 @@ def save_screen_to_png(driver):
         
         time.sleep(1)
         # 截图并关掉浏览器
-        driver.save_screenshot("./tmp/img/0.png")
+        driver.save_screenshot("D:/workspace/zxUIED/zxUIED/tmp2/img/0.png")
         # driver.close()
 
  
     except Exception as e:
         print(e)
-    
+
+
+def get_screen_full(driver):
+    driver.implicitly_wait(20)
+    time.sleep(10)
+    # 全屏截图的关键，用js获取页面的宽高
+    width=driver.execute_script("return document.body.clientWidth")
+    height=driver.execute_script("return document.body.scrollHeight")
+    print(width,height)
+
+    # width, height = pyautogui.size()   
+    # print(width,height)
+    # 获取浏览器的宽高
+    driver.set_window_size(width,height)
+    # 截图base64
+    img_bin = driver.get_screenshot_as_png()
+    image = np.asarray(bytearray(img_bin), dtype="uint8")
+    img = cv2.imdecode(image, cv2.IMREAD_COLOR)
+    return img
 
 
 if __name__ == "__main__":
@@ -337,30 +341,38 @@ if __name__ == "__main__":
 
 
     url = "https://www.amazon.com/"
+    url = "https://www.amazon.com/b?node=16225016011&pf_rd_r=QWCTYPD7HS3RK4825EK4&pf_rd_p=e5b0c85f-569c-4c90-a58f-0c0a260e45a0&pd_rd_r=a111a7b9-1c9a-4f1c-94cd-adcebf80edc8&pd_rd_w=91i37&pd_rd_wg=maykA&ref_=pd_gw_unk"
     url = "https://www.amazon.com/CUPSHE-Casual-Summer-Crochet-Dresses/dp/B0BTSV3187/ref=sr_1_2?content-id=amzn1.sym.b24fa8ec-eb31-46d1-a5f8-fe8bcdc3d018%3Aamzn1.sym.b24fa8ec-eb31-46d1-a5f8-fe8bcdc3d018&pd_rd_r=3c7482f3-7950-4e95-965a-5c6f765cf2a1&pd_rd_w=Zd6XU&pd_rd_wg=CNW0m&pf_rd_p=b24fa8ec-eb31-46d1-a5f8-fe8bcdc3d018&pf_rd_r=R8GGX3G1DBHBK036NCT5&qid=1675762746&s=apparel&sr=1-2&wi=lbfp6fbf_0"
     url = "https://www.amazon.com/UGG-Scuffette-Slipper-Chestnut-Size/dp/B082HJ2NQN/ref=sr_1_3?isTryState=0&nodeID=14807110011&pd_rd_r=ed856e00-e5ac-4ed1-8537-34fcdff755e9&pd_rd_w=n92qA&pd_rd_wg=KQZmf&pf_rd_p=72d0c0b8-8a33-49dd-8a98-91f9fbc2fe19&pf_rd_r=65VDNKKWAZ44HEM36PNW&psd=1&qid=1675838043&refinements=p_n_feature_eighteen_browse-bin%3A21451213011&s=prime-wardrobe&sr=1-3&th=1"
- 
+
     driver.get(url)
     # 修改邮编
     time.sleep(5)
     post_id = 10041
+    st = time.time()
     change_address(post_id)
-   
+    print("change_address cost time:{}".format(time.time()-st))
+    st = time.time()
     save_screen_to_png(driver)
+    print("save_screen_to_png cost time:{}".format(time.time()-st))
     tag_names = ["button",  # 按钮
             "img",      # 图片
-            "i",        # ico图标
-            "svg",      # svg格式图标
-            "use",      # SVG图标的节点获取
+            # "i",        # ico图标
+            # "svg",      # svg格式图标
+            # "use",      # SVG图标的节点获取
             "input",    # 输入框
-            "span",     # 带背景的区域
-            "em",       # 文本定义为强调内容
-            "table",    # 表格
-            "select",
-            "a"
+            # "span",     # 带背景的区域
+            # "em",       # 文本定义为强调内容
+            # "table",    # 表格
+            "select"
+        
             ]  # 下拉框
         
-    search_str = ["title", "btn", "button", "arrow", "select", "ico", "img", 'logo', "action"]
-    save_path = "D:/workspace/zxUIED/zxUIED/tmp"
-    gen_random_anns(driver,10,save_path)
-    # screenshot_to_png(url,driver,"./0.png")
+    search_str = ["select", 'nav_a','nav-a','nav-a-content', 'a-button-inner',
+    'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text", 'a-declarative', 'a-meter',
+    'cr-lighthouse-term', "cr-helpful-text", "action-inner", "sign-in-tooltip-link", "nav-search-scope", "nav-hamburger-menu", "a-spacing-micro"]
+
+    save_path = "D:/workspace/zxUIED/zxUIED/tmp2"
+    st = time.time()
+    gen_random_anns(driver, 10, save_path)
+    print("gen_random_anns cost time:{}".format(time.time()-st))
