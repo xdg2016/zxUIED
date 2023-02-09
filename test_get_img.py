@@ -152,9 +152,9 @@ def gen_random_anns(driver,times,save_path):
     '''
     
     width=driver.execute_script("return document.body.clientWidth")
-    window_height = driver.execute_script("return document.documentElement.scrollHeight")
-    driver.set_window_size(width,window_height)
-    print("shot: ", width, window_height)
+    height = driver.execute_script("return document.documentElement.scrollHeight")
+    driver.set_window_size(width,height)
+    print("shot: ", width, height)
     img_num = 0
     # elements = driver.find_elements(By.XPATH,f"//*")
     tag_results = get_tag_elements(driver,tag_names)
@@ -278,7 +278,7 @@ def change_address(postal):
 def save_screen_to_png(driver):
     driver.implicitly_wait(10)
 
-    # driver.maximize_window()
+    driver.maximize_window()
     # width=driver.execute_script("return document.body.clientWidth")
     # height=driver.execute_script("return document.documentElement.scrollHeight")
     
