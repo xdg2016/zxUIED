@@ -8,6 +8,7 @@ from tqdm import tqdm
 import numpy as np
 import shutil
 from picodet import PicoDet
+from multiprocessing.dummy import Pool as ThreadPool
 
 def read_xml(xml_path):
     '''
@@ -243,31 +244,40 @@ def pre_label():
     用训练好的模型做预标注
     '''
     #=========== 初始化模型 =============
-    det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_opt.onnx"
+    det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED.onnx"
     label_path = "weight/label_list.txt"
     det_net = PicoDet(model_pb_path = det_model_path,label_path = label_path)
 
     # 数据目录
-    data_home = "F:/Datasets/UIED/trainval_data/UIED_2023_02_15/test2/" 
-    save_home = "F:/Datasets/UIED/trainval_data/UIED_2023_02_15/test2/"
-    imgs_path = os.path.join(data_home,"screen")        # 截的页面长图文件夹
+    data_home = "F:/Datasets/UIED/原始标注数据/2023_02_16/" 
+    save_home = "F:/Datasets/UIED/裁剪标注数据/2023_02_17/"
+    dir = "screen"
+    imgs_path = os.path.join(data_home,dir)        # 截的页面长图文件夹
 
     # 结果保存路径
-    save_imgs_path = os.path.join(save_home,"imgs")     # 裁剪出来的小图
-    save_xmls_path = os.path.join(save_home,"xmls")     # 裁剪出来的小图对应的标签
+    save_imgs_path = os.path.join(save_home,dir,"imgs")     # 裁剪出来的小图
+    save_xmls_path = os.path.join(save_home,dir,"xmls")     # 裁剪出来的小图对应的标签
     make_dirs(save_imgs_path)
     make_dirs(save_xmls_path)
 
     height = 1080
     imgs = os.listdir(imgs_path)
+    pbar = tqdm(total=len(imgs))
+
+    # def cut_save(img):
     for img in tqdm(imgs):
         img_name = img.split(".")[0]
         img_path = os.path.join(imgs_path,img)
-        img = cv2.imread(img_path,cv2.IMREAD_COLOR)
-        
+        try:
+            # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
+            img = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+        except:
+            continue
+            # return
+        pbar.update(1)
         # 裁剪
         img_num = 0
-        ratio = 1
+        ratio = 0.3
         # 每次向下走一步（这里步长设为一屏）
         step = int(height * ratio)
         h,w = img.shape[:2]
@@ -295,10 +305,19 @@ def pre_label():
             save_img_name = img_name+"_"+str(img_num)
             save_img_path = os.path.join(save_imgs_path,save_img_name+".jpg")
             # 保存图片和标签
-            cv2.imwrite(save_img_path,save_img)
+            # cv2.imwrite(save_img_path,save_img)
+            cv2.imencode('.jpg', save_img)[1].tofile(save_img_path)
             write_xml(save_img_path,save_img_name,save_img_path,im_w,im_h,len(cls_list),cls_list,box_list,save_xmls_path)
             img_num += 1
-            
+
+    # 创建多线程处理
+    # pbar = tqdm(total=len(imgs))
+    # pool = ThreadPool(processes=10)
+    # pool.map(cut_save, imgs)
+    # pool.close()
+    # pool.join()
+    # pbar.close()
+      
 
 if __name__ == "__main__":
 
