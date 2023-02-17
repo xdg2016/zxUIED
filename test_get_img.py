@@ -502,12 +502,18 @@ def get_data_from_url(driver,url,url_id):
     time.sleep(10)
     driver.implicitly_wait(10)
     post_id = 10041
-    change_address(post_id)
+    try:
+        change_address(post_id)
+    except Exception as e:   
+        print(e)
     t1 = time.time()
     print("load page and change address cost:",t1-st)
 
     # 保存全屏截图
-    img,w,h = save_screen_to_png(driver)
+    
+
+    img, w, h = save_screen_to_png(driver)
+    
     
     t2 = time.time()
     print("save screen cost:",t2-t1)
