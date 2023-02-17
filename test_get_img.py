@@ -383,7 +383,8 @@ def gen_random_anns(driver,img,save_path,url_id,w,h):
         
         # 保存图片和xml
         #save_img_xml(driver,img_path,xml_path,img,cls_names,box_lists,url_id)
-        cv2.imwrite("./tmp3/img"+"/{}.png".format(url_id),img)
+        # cv2.imwrite("./tmp3/img"+"/{}.png".format(url_id),img)
+        cv2.imencode('.jpg', img)[1].tofile(os.path.join(img_path,str(url_id)+".jpg"))
         write_xml(img_path, str(img_num), img_path, width, window_height, len(box_lists), cls_names, box_lists, xml_path,url_id)
 
 def init_driver():
@@ -512,7 +513,7 @@ def get_data_from_url(driver,url,url_id):
     print("save screen cost:",t2-t1)
 
    
-    save_path = "D:/workspace/zxUIED/zxUIED/tmp3"
+    save_path = "F:/Datasets/UIED/元素检测/原始标注数据/2023_02_17/cunmin2"
     
     # 查找元素
 
