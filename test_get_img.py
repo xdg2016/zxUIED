@@ -235,11 +235,14 @@ def gen_random_anns(driver,img,save_path,url_id):
 
     cls_names = []
     box_lists = []
-
+    js_height = "return document.body.availHeight"
+    height = driver.execute_script(js_height)
     def get_list(e):
         pbar.update(1)
         # tt = time.time()
         x,y,w,h = int(e.rect['x']),int(e.rect['y']),int(e.rect['width']),int(e.rect['height'])
+        if h > height :
+            return 
         box_lists.append([x,y,x+w,y+h])
         cls_names.append(e.tag_name)
     
@@ -253,8 +256,9 @@ def gen_random_anns(driver,img,save_path,url_id):
       
     print("find cost:",time.time()-t1)
 
-    cv2.imwrite(os.path.join(img_path,"0.png" ),img)
-    write_xml(img_path,"0",img_path,img.shape[1],img.shape[0],len(cls_names),cls_names,box_lists,xml_path)
+    # cv2.imwrite(os.path.join(img_path,"0.png" ),img)
+    cv2.imencode('.jpg', img)[1].tofile(os.path.join(img_path,str(url_id)+".jpg"))
+    write_xml(img_path,str(url_id),img_path,img.shape[1],img.shape[0],len(cls_names),cls_names,box_lists,xml_path)
     
     # 保存图片和xml
     # save_img_xml(driver,img_path,xml_path,img,cls_names,box_lists,url_id)
@@ -386,58 +390,66 @@ if __name__ == "__main__":
     # url = "https://clinic.amazon.com/dp/B09VMWLFSR?ref=sf_conditions_seasonal_allergies"
     # url = "https://www.amazon.com/gp/help/customer/display.html?nodeId=508510&ref_=nav_cs_customerservice"
 
-    driver.get(url)
-    # 修改邮编
-    time.sleep(5)
-    post_id = 10041
-    change_address(post_id)
-    t1 = time.time()
-    print("load page and change address cost:",t1-st)
+    urls = open("urls.txt").readlines()
+    random.shuffle(urls)
+    for url_id,url in enumerate(urls):    
+        driver = init_driver()
+        driver.get(url)
+        # 修改邮编
+        time.sleep(5)
+        post_id = 10041
+        change_address(post_id)
+        t1 = time.time()
+        print("load page and change address cost:",t1-st)
 
-    # 保存全屏截图
-    img = save_screen_to_png(driver)
-    t2 = time.time()
-    print("save screen cost:",t2-t1)
+        # 保存全屏截图
+        img = save_screen_to_png(driver)
+        t2 = time.time()
+        print("save screen cost:",t2-t1)
 
-    tag_names = ["button",  # 按钮
-                "img",      # 图片
-                "input",    # 输入框
-                "table",    # 表格
-                "select",   # 下拉框
-                ] 
-        
-    search_str = ["title", 
-                  "btn",
-                  "button", 
-                  "arrow", 
-                  "select", 
-                  "ico", 
-                  "img", 
-                  'logo', ]
-    
-    tag_names = ["button",  # 按钮
-            "img",      # 图片
-            # "i",        # ico图标
-            # "svg",      # svg格式图标
-            # "use",      # SVG图标的节点获取
-            "input",    # 输入框
-            # "span",     # 带背景的区域
-            # "em",       # 文本定义为强调内容
-            # "table",    # 表格
-            "select"
-        
-            ]  # 下拉框
-        
-    search_str = ["select", 'nav_a','nav-a','nav-a-content', 'button','a-button-inner',
-                'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text", 'a-declarative', 'a-meter',
-                'cr-lighthouse-term', "cr-helpful-text", "action-inner","a-box-inner", "sign-in-tooltip-link", "nav-search-scope", 
-                "nav-hamburger-menu", "a-spacing-micro", "play-button-inner","icp-button","padding-left-small","nav-menu-item","nav-menu-cta","pui-text"]
+        tag_names = ["button",  # 按钮
+                    "img",      # 图片
+                    "input",    # 输入框
+                    "table",    # 表格
+                    "select",   # 下拉框
+                    ] 
             
+        search_str = ["title", 
+                    "btn",
+                    "button", 
+                    "arrow", 
+                    "select", 
+                    "ico", 
+                    "img", 
+                    'logo', ]
+        
+        tag_names = ["button",  # 按钮
+                "img",      # 图片
+                # "i",        # ico图标
+                # "svg",      # svg格式图标
+                # "use",      # SVG图标的节点获取
+                "input",    # 输入框
+                # "span",     # 带背景的区域
+                # "em",       # 文本定义为强调内容
+                # "table",    # 表格
+                "select"
+            
+                ]  # 下拉框
+            
+        search_str = ["select", 'nav_a','nav-a','nav-a-content', 'button','a-button-inner',
+                    'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text", 'a-declarative', 'a-meter',
+                    'cr-lighthouse-term', "cr-helpful-text", "action-inner","a-box-inner", "sign-in-tooltip-link", "nav-search-scope", 
+                    "nav-hamburger-menu", "a-spacing-micro", "play-button-inner","icp-button","padding-left-small","nav-menu-item","nav-menu-cta","pui-text"]
+        
+        search_str = ['nav_a','nav-a','nav-a-content','a-button-inner',
+                    'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text", 'a-declarative', 'a-meter',"a-price-whole"
+                    'cr-lighthouse-term', "cr-helpful-text", "action-inner", "sign-in-tooltip-link","s-pagination-item", "nav-search-scope", 
+                    "nav-hamburger-menu", "a-spacing-micro", "play-button-inner","a-size-base-plus", "icp-button", "padding-left-small", "nav-menu-item", "nav-menu-cta", "pui-text"]
+                    
 
-    save_path = "D:/workspace/zxUIED/zxUIED/tmp2"
-    url_id = 0
-    # 查找元素
-    gen_random_anns(driver,img,save_path,url_id)
-    et = time.time()
-    print("gen random anns cost:",et-t2)
-    print("total cost:",et-st)
+        save_path = "F:/Datasets/UIED/元素检测/原始标注数据/2023_02_17/cunmin"
+        # 查找元素
+        gen_random_anns(driver,img,save_path,url_id)
+        et = time.time()
+        print("gen random anns cost:",et-t2)
+        print("total cost:",et-st)
