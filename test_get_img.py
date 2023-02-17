@@ -252,9 +252,12 @@ def gen_random_anns(driver,img,save_path,url_id):
     pbar.close()
       
     print("find cost:",time.time()-t1)
+
+    cv2.imwrite(os.path.join(img_path,"0.png" ),img)
+    write_xml(img_path,"0",img_path,img.shape[1],img.shape[0],len(cls_names),cls_names,box_lists,xml_path)
     
     # 保存图片和xml
-    save_img_xml(driver,img_path,xml_path,img,cls_names,box_lists,url_id)
+    # save_img_xml(driver,img_path,xml_path,img,cls_names,box_lists,url_id)
 
 def init_driver():
     '''
@@ -276,13 +279,16 @@ def change_address(postal):
     '''
     将右边切换到纽约10041
     '''
+    try_nums = 0
     while True:
         try:
-            # driver.find_element_by_id('glow-ingress-line1').click()
+            try_nums += 1
             driver.find_element(By.XPATH,"//*[@id='nav-main']/div[1]/div/div/div[3]/span[2]/span/input").click()
-            # driver.find_element_by_id('nav-global-location-slot').click()
             time.sleep(2)
         except Exception as e:
+            if try_nums == 2:
+                print("no need to change address!")
+                break
             driver.refresh()
             time.sleep(10)
             continue
@@ -373,60 +379,64 @@ if __name__ == "__main__":
     url = "https://www.amazon.com/CUPSHE-Casual-Summer-Crochet-Dresses/dp/B0BTSV3187/ref=sr_1_2?content-id=amzn1.sym.b24fa8ec-eb31-46d1-a5f8-fe8bcdc3d018%3Aamzn1.sym.b24fa8ec-eb31-46d1-a5f8-fe8bcdc3d018&pd_rd_r=3c7482f3-7950-4e95-965a-5c6f765cf2a1&pd_rd_w=Zd6XU&pd_rd_wg=CNW0m&pf_rd_p=b24fa8ec-eb31-46d1-a5f8-fe8bcdc3d018&pf_rd_r=R8GGX3G1DBHBK036NCT5&qid=1675762746&s=apparel&sr=1-2&wi=lbfp6fbf_0"
     url = "https://www.amazon.com/UGG-Scuffette-Slipper-Chestnut-Size/dp/B082HJ2NQN/ref=sr_1_3?isTryState=0&nodeID=14807110011&pd_rd_r=ed856e00-e5ac-4ed1-8537-34fcdff755e9&pd_rd_w=n92qA&pd_rd_wg=KQZmf&pf_rd_p=72d0c0b8-8a33-49dd-8a98-91f9fbc2fe19&pf_rd_r=65VDNKKWAZ44HEM36PNW&psd=1&qid=1675838043&refinements=p_n_feature_eighteen_browse-bin%3A21451213011&s=prime-wardrobe&sr=1-3&th=1"
     url = "https://www.amazon.com/UGG-Ansley-Slipper-Black-Size/dp/B082HJ9H4S/ref=d_softlines_sb_mfpfy_btf_v1_vft_none_sccl_1_2/139-7571617-7444346?pd_rd_w=ze2Pc&content-id=amzn1.sym.6a7ee8bc-3980-4d7b-9042-d97e0c49e955&pf_rd_p=6a7ee8bc-3980-4d7b-9042-d97e0c49e955&pf_rd_r=GX9PWY3YCHGG7W2T1SD6&pd_rd_wg=XsYg0&pd_rd_r=dc9eb53e-6c30-47f5-a836-ab83ab225f03&pd_rd_i=B0BGM39FXG&psc=1"
-    driver.get(url)
-    # 修改邮编
-    time.sleep(5)
-    post_id = 10041
-    change_address(post_id)
-    t1 = time.time()
-    print("load page and change address cost:",t1-st)
-
-    # 保存全屏截图
-    img = save_screen_to_png(driver)
-    t2 = time.time()
-    print("save screen cost:",t2-t1)
-
-    tag_names = ["button",  # 按钮
-                "img",      # 图片
-                "input",    # 输入框
-                "table",    # 表格
-                "select",   # 下拉框
-                ] 
-        
-    search_str = ["title", 
-                  "btn",
-                  "button", 
-                  "arrow", 
-                  "select", 
-                  "ico", 
-                  "img", 
-                  'logo', ]
     
-    tag_names = ["button",  # 按钮
-            "img",      # 图片
-            # "i",        # ico图标
-            # "svg",      # svg格式图标
-            # "use",      # SVG图标的节点获取
-            "input",    # 输入框
-            # "span",     # 带背景的区域
-            # "em",       # 文本定义为强调内容
-            # "table",    # 表格
-            "select"
-        
-            ]  # 下拉框
-        
-    search_str = ["select", 'nav_a','nav-a','nav-a-content', 'a-button-inner',
-                'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text", 'a-declarative', 'a-meter',
-                'cr-lighthouse-term', "cr-helpful-text", "action-inner", "sign-in-tooltip-link", "nav-search-scope", 
-                "nav-hamburger-menu", "a-spacing-micro", "play-button-inner"]
-            
+    urls = open("urls.txt").readlines()
+    for id,url in enumerate(urls[:1]):
+        driver.get(url)
+        # 修改邮编
+        time.sleep(5)
+        post_id = 10041
+        change_address(post_id)
+        t1 = time.time()
+        print("load page and change address cost:",t1-st)
 
-    save_path = "F:/Datasets/UIED/tmp2"
-    url_id = 0
-    # 查找元素
-    gen_random_anns(driver,img,save_path,url_id)
-    et = time.time()
-    print("gen random anns cost:",et-t2)
-    print("total cost:",et-st)
+        # 保存全屏截图
+        img = save_screen_to_png(driver)
+        t2 = time.time()
+        print("save screen cost:",t2-t1)
+
+        # tag_names = ["button",  # 按钮
+        #             "img",      # 图片
+        #             "input",    # 输入框
+        #             "table",    # 表格
+        #             "select",   # 下拉框
+        #             ] 
+            
+        # search_str = ["title", 
+        #             "btn",
+        #             "button", 
+        #             "arrow", 
+        #             "select", 
+        #             "ico", 
+        #             "img", 
+        #             'logo', ]
+        
+        tag_names = ["button",  # 按钮
+                "img",      # 图片
+                # "i",        # ico图标
+                # "svg",      # svg格式图标
+                # "use",      # SVG图标的节点获取
+                "input",    # 输入框
+                # "span",     # 带背景的区域
+                # "em",       # 文本定义为强调内容
+                # "table",    # 表格
+                "select"
+            
+                ]  # 下拉框
+        tag_names = ['div']
+            
+        # search_str = ["select", 'nav_a','nav-a','nav-a-content', 'a-button-inner',
+        #             'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text", 'a-declarative', 'a-meter',
+        #             'cr-lighthouse-term', "cr-helpful-text", "action-inner", "sign-in-tooltip-link", "nav-search-scope", 
+        #             "nav-hamburger-menu", "a-spacing-micro", "play-button-inner"]
+        search_str = ['div']
+
+        save_path = "F:/Datasets/UIED/tmp3"
+        
+        # 查找元素
+        gen_random_anns(driver,img,save_path,id)
+        et = time.time()
+        print("gen random anns cost:",et-t2)
+        print("total cost:",et-st)
     
     
