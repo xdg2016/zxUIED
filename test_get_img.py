@@ -20,6 +20,19 @@ from PIL import Image
 from tqdm import tqdm
 from multiprocessing.dummy import Pool as ThreadPool
 
+def get_colorful_href_elements(driver,colors):
+    
+    '''
+    根据html标签名查找
+    '''
+    all_results = []
+    for color in tqdm(colors):
+        # results = driver.find_elements(By.TAG_NAME,tag)
+        results = driver.find_elements(By.XPATH,f"//*")
+        results = [ele for ele in results if ele.value_of_css_property("Color")==color and ele.is_displayed() and ele.value_of_css_property("display") != 'block']
+        all_results.extend(results)
+    return all_results
+
 def get_tag_elements(driver,tag_names):
     '''
     根据html标签名查找
@@ -27,7 +40,8 @@ def get_tag_elements(driver,tag_names):
     all_results = []
     for tag in tqdm(tag_names):
         # results = driver.find_elements(By.TAG_NAME,tag)
-        results = [ele for ele in driver.find_elements(By.TAG_NAME,tag) if ele.is_displayed()]
+        results = driver.find_elements(By.TAG_NAME,tag)
+        results = [ele for ele in results if ele.is_displayed()]
         # hidden_results = driver.find_elements(By.XPATH, f"//*[contains(@style,'hidden')]")
         # results = list(set(results) - set(hidden_results))
         all_results.extend(results)
@@ -39,7 +53,8 @@ def get_class_contains_elements(driver,classes):
     '''
     all_results = []
     for cls in tqdm(classes):
-        results =  driver.find_elements(By.XPATH, f"//*[contains(@class,'{cls}')]")
+        results = driver.find_elements(By.XPATH, f"//*[contains(@class,'{cls}')]")
+        results =  [ele for ele in results if ele.is_displayed()]
         all_results += results
     return all_results
 
@@ -153,7 +168,7 @@ def make_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
-def write_xml(folder: str, img_name: str, path: str, img_width: int, img_height: int, tag_num: int, tag_names: str, box_list:list,save_path:str,url_id:int):
+def write_xml(folder: str, img_name: str, path: str, img_width: int, img_height: int, tag_num: int, tag_names: str, box_list:list,save_path:str,url_id:int=0):
     '''
     VOC标注xml文件生成函数
     :param folder: 文件夹名
@@ -317,8 +332,6 @@ def get_box_info(loc, box_lists):
             over_lap = True
             break
     return over_lap
-    
-
 
 def gen_random_anns(driver,img,save_path,url_id,w,h):
     '''
@@ -337,20 +350,23 @@ def gen_random_anns(driver,img,save_path,url_id,w,h):
         t1 = time.time()
         img_num = 0
         driver.implicitly_wait(0.5)
+        # 根据文字颜色查找
+        colorful_results = get_colorful_href_elements(driver,colors)
         # 根据tagname查找
         tag_results = get_tag_elements(driver,tag_names)
         # 根据规则查找
         class_results = get_class_contains_elements(driver, search_str)
-        results = set(class_results) | set(tag_results)
+        results = set(class_results) | set(tag_results) | set(colorful_results)
         
-        img_path = os.path.join(save_path,"img")
-        xml_path = os.path.join(save_path,"xml")
+        img_path = os.path.join(save_path,"imgs")
+        xml_path = os.path.join(save_path,"xmls")
         # 检查保存路径
         make_dir(save_path)
         make_dir(img_path)
         make_dir(xml_path)
         
         print(f"search elements done, cost {time.time()-t1}")
+        print("colorful results:",len(colorful_results))
         print("tag results:",len(tag_results))
         print("class result:",len(class_results))
         t1 = time.time()
@@ -407,32 +423,35 @@ def change_address(postal):
     '''
     将右边切换到纽约10041
     '''
-    # while True:
-    try:
-        # driver.find_element_by_id('glow-ingress-line1').click()
-        driver.find_element(By.XPATH,"//*[@id='nav-main']/div[1]/div/div/div[3]/span[2]/span/input").click()
-        # driver.find_element_by_id('nav-global-location-slot').click()
-        time.sleep(2)
-    except Exception as e:
-        driver.refresh()
-        time.sleep(10)
-        # continue
-    try:
-        driver.find_element(By.XPATH,"//*[@id='GLUXZipUpdateInput']").send_keys(postal)
-        time.sleep(1)
-    except Exception :
-        driver.refresh()
-        time.sleep(10)
-        # continue
-    
-    try:
-        driver.find_element(By.XPATH,"//*[@id='GLUXZipUpdate']/span/input").click()
-        time.sleep(1)
-        # break
-    except Exception :
-        driver.refresh()
-        time.sleep(10)
-        # continue
+    print('change address...')
+    try_num = 0
+    while True:
+        try:
+            try_num += 1
+            # driver.find_element_by_id('glow-ingress-line1').click()
+            driver.find_element(By.XPATH,"//*[@id='nav-main']/div[1]/div/div/div[3]/span[2]/span/input").click()
+            # driver.find_element_by_id('nav-global-location-slot').click()
+            time.sleep(2)
+        except Exception as e:
+            break
+            driver.refresh()
+            time.sleep(10)
+            # continue
+        try:
+            driver.find_element(By.XPATH,"//*[@id='GLUXZipUpdateInput']").send_keys(postal)
+            time.sleep(1)
+        except Exception :
+            driver.refresh()
+            time.sleep(10)
+            # continue
+        try:
+            driver.find_element(By.XPATH,"//*[@id='GLUXZipUpdate']/span/input").click()
+            time.sleep(1)
+            # break
+        except Exception :
+            driver.refresh()
+            time.sleep(10)
+            # continue
     driver.refresh()
     time.sleep(1)
 
@@ -496,7 +515,7 @@ def get_screen_full(driver):
 
 
 
-def get_data_from_url(driver,url,url_id):
+def get_data_from_url(driver,url,url_id,save_path):
     driver.get(url)
     # 修改邮编
     time.sleep(10)
@@ -518,8 +537,6 @@ def get_data_from_url(driver,url,url_id):
     t2 = time.time()
     print("save screen cost:",t2-t1)
 
-   
-    save_path = "F:/Datasets/UIED/元素检测/原始标注数据/2023_02_17/cunmin2"
     
     # 查找元素
 
@@ -569,10 +586,21 @@ if __name__ == "__main__":
             ]  # 下拉框
         
     search_str = ['nav_a','nav-a','nav-a-content','a-button-inner',
-                'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text", 'a-declarative', 'a-meter',"a-price-whole"
+                'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text",  'a-meter',"a-price-whole",
                 'cr-lighthouse-term', "cr-helpful-text", "action-inner", "sign-in-tooltip-link","s-pagination-item", "nav-search-scope", 
-                "nav-hamburger-menu", "a-spacing-micro", "play-button-inner","a-size-base-plus", "icp-button", "padding-left-small", "a-link-normal","nav-menu-item", "nav-menu-cta", "pui-text"]
+                "nav-hamburger-menu",  "play-button-inner", "icp-button", "padding-left-small", 
+                "a-link-normal","nav-menu-item", "nav-menu-cta", "pui-text"]
+
+                # 'a-declarative',"a-size-base-plus","a-spacing-micro",
+    
+    colors = ['rgb(0, 113, 133)','rgb(196, 85, 0)']
+    avaliable_urls = []
+
+    save_path = "F:/Datasets/UIED/元素检测/原始标注数据/2023_02_20/cunmin"
+    make_dir(save_path)
+    url_file = open(os.path.join(save_path,"goold_urls.txt"),"a+")
     for i in range(1000):
+        print("#"*100)
         driver = init_driver()
         with open("urls.json", 'r') as f:
             url_data = json.load(f)
@@ -582,10 +610,12 @@ if __name__ == "__main__":
             url = url_data[rand_int]
             print(url)
             try:
-                get_data_from_url(driver, url, rand_int)
+                get_data_from_url(driver, url, rand_int,save_path)
                 driver.close()
+                url_file.write(url+"\n")
             except Exception as e:
                 print(e)
+    url_file.close()
     # et = time.time()
     # print("gen random anns cost:",et-t2)
     # print("total cost:",et-st)
