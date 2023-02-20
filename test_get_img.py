@@ -591,7 +591,7 @@ if __name__ == "__main__":
                 "nav-hamburger-menu",  "play-button-inner", "icp-button", "padding-left-small", 
                 "a-link-normal","nav-menu-item", "nav-menu-cta", "pui-text"]
 
-                # 'a-declarative',"a-size-base-plus","a-spacing-micro",
+                # 'a-declarative',"a-size-base-plus","a-spacing-micro",cr-lighthouse-term
     
     colors = ['rgb(0, 113, 133)','rgb(196, 85, 0)']
     avaliable_urls = []
