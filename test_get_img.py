@@ -25,12 +25,12 @@ def get_colorful_href_elements(driver,colors):
     '''
     根据html标签名查找
     '''
-    all_results = []
-    for color in tqdm(colors):
-        # results = driver.find_elements(By.TAG_NAME,tag)
-        results = driver.find_elements(By.XPATH,f"//*")
-        results = [ele for ele in results if ele.value_of_css_property("Color")==color and ele.is_displayed() and ele.value_of_css_property("display") != 'block']
-        all_results.extend(results)
+
+    results = driver.find_elements(By.XPATH, f"//*")
+
+        
+    all_results = [ele for ele in results if ele.value_of_css_property("Color") in colors and ele.is_displayed() and ele.value_of_css_property("display") != 'block']
+        
     return all_results
 
 def get_tag_elements(driver,tag_names):
@@ -357,7 +357,7 @@ def gen_random_anns(driver,img,save_path,url_id,w,h):
         # 根据规则查找
         class_results = get_class_contains_elements(driver, search_str)
         results = set(class_results) | set(tag_results) | set(colorful_results)
-        
+        # results = set(colorful_results)
         img_path = os.path.join(save_path,"imgs")
         xml_path = os.path.join(save_path,"xmls")
         # 检查保存路径
@@ -425,32 +425,32 @@ def change_address(postal):
     '''
     print('change address...')
     try_num = 0
-    while True:
-        try:
-            try_num += 1
-            # driver.find_element_by_id('glow-ingress-line1').click()
-            driver.find_element(By.XPATH,"//*[@id='nav-main']/div[1]/div/div/div[3]/span[2]/span/input").click()
-            # driver.find_element_by_id('nav-global-location-slot').click()
-            time.sleep(2)
-        except Exception as e:
-            break
-            driver.refresh()
-            time.sleep(10)
-            # continue
-        try:
-            driver.find_element(By.XPATH,"//*[@id='GLUXZipUpdateInput']").send_keys(postal)
-            time.sleep(1)
-        except Exception :
-            driver.refresh()
-            time.sleep(10)
-            # continue
-        try:
-            driver.find_element(By.XPATH,"//*[@id='GLUXZipUpdate']/span/input").click()
-            time.sleep(1)
-            # break
-        except Exception :
-            driver.refresh()
-            time.sleep(10)
+    # while True:
+    try:
+        try_num += 1
+        # driver.find_element_by_id('glow-ingress-line1').click()
+        driver.find_element(By.XPATH,"//*[@id='nav-main']/div[1]/div/div/div[3]/span[2]/span/input").click()
+        # driver.find_element_by_id('nav-global-location-slot').click()
+        time.sleep(2)
+    except Exception as e:
+        #break
+        driver.refresh()
+        time.sleep(10)
+        # continue
+    try:
+        driver.find_element(By.XPATH,"//*[@id='GLUXZipUpdateInput']").send_keys(postal)
+        time.sleep(1)
+    except Exception :
+        driver.refresh()
+        time.sleep(10)
+        # continue
+    try:
+        driver.find_element(By.XPATH,"//*[@id='GLUXZipUpdate']/span/input").click()
+        time.sleep(1)
+        # break
+    except Exception :
+        driver.refresh()
+        time.sleep(10)
             # continue
     driver.refresh()
     time.sleep(1)
@@ -586,17 +586,17 @@ if __name__ == "__main__":
             ]  # 下拉框
         
     search_str = ['nav_a','nav-a','nav-a-content','a-button-inner',
-                'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text",  'a-meter',"a-price-whole",
-                'cr-lighthouse-term', "cr-helpful-text", "action-inner", "sign-in-tooltip-link","s-pagination-item", "nav-search-scope", 
+                'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text",  'a-meter',
+                 "action-inner", "sign-in-tooltip-link","s-pagination-item", "nav-search-scope", 
                 "nav-hamburger-menu",  "play-button-inner", "icp-button", "padding-left-small", 
-                "a-link-normal","nav-menu-item", "nav-menu-cta", "pui-text"]
+                "a-link-normal","nav-menu-item", "nav-menu-cta", "pui-text","hm-icon"]
 
                 # 'a-declarative',"a-size-base-plus","a-spacing-micro",
     
     colors = ['rgb(0, 113, 133)','rgb(196, 85, 0)']
     avaliable_urls = []
 
-    save_path = "F:/Datasets/UIED/元素检测/原始标注数据/2023_02_20/cunmin"
+    save_path = "D:/workspace/zxUIED/zxUIED/tmp3"
     make_dir(save_path)
     url_file = open(os.path.join(save_path,"goold_urls.txt"),"a+")
     for i in range(1000):
