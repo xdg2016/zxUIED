@@ -18,7 +18,23 @@ import random
 import numba as nb
 from PIL import Image
 from tqdm import tqdm
+import sys
 from multiprocessing.dummy import Pool as ThreadPool
+
+time_str = time.strftime('%Y%m%d%H%M%S')
+log_file = "Output" + time_str
+
+class Logger(object):
+    def __init__(self, filename=log_file):
+        self.terminal = sys.stdout
+        self.log = open(filename, "a")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        pass
 
 def get_colorful_href_elements(driver,colors):
     
@@ -26,11 +42,8 @@ def get_colorful_href_elements(driver,colors):
     根据html标签名查找
     '''
     all_results = []
-    for color in tqdm(colors):
-        # results = driver.find_elements(By.TAG_NAME,tag)
-        results = driver.find_elements(By.XPATH,f"//*")
-        results = [ele for ele in results if ele.value_of_css_property("Color")==color and ele.is_displayed() and ele.value_of_css_property("display") != 'block']
-        all_results.extend(results)
+    results = driver.find_elements(By.XPATH,f"//*")
+    all_results = [ele for ele in results if ele.value_of_css_property("Color") in colors and ele.is_displayed() and ele.value_of_css_property("display") != 'block']
     return all_results
 
 def get_tag_elements(driver,tag_names):
@@ -402,6 +415,9 @@ def gen_random_anns(driver,img,save_path,url_id,w,h):
         # cv2.imwrite("./tmp3/img"+"/{}.png".format(url_id),img)
         cv2.imencode('.jpg', img)[1].tofile(os.path.join(img_path,str(url_id)+".jpg"))
         write_xml(img_path, str(img_num), img_path, width, window_height, len(box_lists), cls_names, box_lists, xml_path,url_id)
+        return True
+    else:
+        return False
 
 def init_driver():
     '''
@@ -529,18 +545,16 @@ def get_data_from_url(driver,url,url_id,save_path):
     print("load page and change address cost:",t1-st)
 
     # 保存全屏截图
-    
-
     img, w, h = save_screen_to_png(driver)
-    
-    
     t2 = time.time()
     print("save screen cost:",t2-t1)
 
-    
     # 查找元素
-
-    gen_random_anns(driver,img,save_path,url_id,w,h)
+    try:
+        flag = gen_random_anns(driver,img,save_path,url_id,w,h)
+    except:
+        flag = False
+    return flag
 
 import json
 if __name__ == "__main__":
@@ -586,33 +600,39 @@ if __name__ == "__main__":
             ]  # 下拉框
         
     search_str = ['nav_a','nav-a','nav-a-content','a-button-inner',
-                'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text",  'a-meter',"a-price-whole",
-                'cr-lighthouse-term', "cr-helpful-text", "action-inner", "sign-in-tooltip-link","s-pagination-item", "nav-search-scope", 
+                'a-button-text', "a-expander-prompt", 'a-icon',"a-input-text",  'a-meter',
+                 "action-inner", "sign-in-tooltip-link","s-pagination-item", "nav-search-scope", 
                 "nav-hamburger-menu",  "play-button-inner", "icp-button", "padding-left-small", 
-                "a-link-normal","nav-menu-item", "nav-menu-cta", "pui-text"]
+                "a-link-normal","nav-menu-item", "nav-menu-cta", "pui-text","hm-icon"]
 
                 # 'a-declarative',"a-size-base-plus","a-spacing-micro",cr-lighthouse-term
     
     colors = ['rgb(0, 113, 133)','rgb(196, 85, 0)']
-    avaliable_urls = []
+    
 
     save_path = "F:/Datasets/UIED/元素检测/原始标注数据/2023_02_20/cunmin"
     make_dir(save_path)
-    url_file = open(os.path.join(save_path,"goold_urls.txt"),"a+")
+    # 记录下可用的url
+    avaliable_urls = []
+    url_file = open(os.path.join(save_path,f"goold_urls_{time_str}.txt"),"a+")
     for i in range(1000):
         print("#"*100)
         driver = init_driver()
         with open("urls.json", 'r') as f:
             url_data = json.load(f)
             rand_int = random.randint(1, len(url_data))
+            while rand_int in avaliable_urls:
+                rand_int = random.randint(1, len(url_data))
             print(rand_int)
             rand_int =rand_int
             url = url_data[rand_int]
             print(url)
             try:
-                get_data_from_url(driver, url, rand_int,save_path)
+                flag = get_data_from_url(driver, url, rand_int,save_path)
                 driver.close()
-                url_file.write(url+"\n")
+                if flag:
+                    url_file.write(f"{rand_int} : {url}\n")
+                    avaliable_urls.append(rand_int)
             except Exception as e:
                 print(e)
     url_file.close()
