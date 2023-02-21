@@ -3,12 +3,12 @@ import xml.etree.ElementTree as ET
 import os
 import random
 import cv2
-from test_get_img import write_xml
 from tqdm import tqdm
 import numpy as np
 import shutil
 from picodet import PicoDet
 from multiprocessing.dummy import Pool as ThreadPool
+import xml.dom.minidom
 
 def read_xml(xml_path):
     '''
@@ -55,13 +55,16 @@ def gen_train_val():
     f_val.close()
 
 
-def gen_train_val2(date):
+def gen_train_val2(date,data_home,type):
     '''
     生成训练验证数据集,多个子文件夹
     '''
-    data_home = "F:/Datasets/UIED"
+    # data_home = "F:/Datasets/UIED"
     origin_data_home = data_home+f"/裁剪标注数据/{date}"
-    trainval_data_home = data_home+f"/trainval_data/UIED_{date}"
+    if type != "":
+        trainval_data_home = data_home+f"/trainval_data/UIED_{type}_{date}"
+    else:
+        trainval_data_home = data_home+f"/trainval_data/UIED_{date}"
     test_data_home = data_home+"/test_data"
     # test_dir = "test_1122"
     make_dirs(trainval_data_home)
@@ -71,7 +74,7 @@ def gen_train_val2(date):
     f_val = open(trainval_data_home+"/val.txt","w",encoding="utf-8")
     # f_test = open(test_data_home+"/test.txt",'w',encoding="utf-8")
 
-    dirs = os.listdir(origin_data_home)
+    dirs = [ dir for dir in os.listdir(origin_data_home) if os.path.isdir(os.path.join(origin_data_home,dir))]
     # 训练验证数据集
     make_dirs(trainval_data_home+"/train_val/imgs")
     make_dirs(trainval_data_home+'/train_val/xmls')
@@ -98,9 +101,9 @@ def gen_train_val2(date):
                 shutil.copy(img_path,dst_img_path)
                 shutil.copy(xml_path,dst_xml_path)
                 if random.random() > 0.1:
-                    f_train.write(f"{dst_img_path.replace(trainval_data_home,'')} {dst_xml_path.replace(trainval_data_home,'')}\r")
+                    f_train.write(f"{dst_img_path.replace(trainval_data_home+'/','')} {dst_xml_path.replace(trainval_data_home+'/','')}\r")
                 else:
-                    f_val.write(f"{dst_img_path.replace(trainval_data_home,'')} {dst_xml_path.replace(trainval_data_home,'')}\r")
+                    f_val.write(f"{dst_img_path.replace(trainval_data_home+'/','')} {dst_xml_path.replace(trainval_data_home+'/','')}\r")
             else:
                 # shutil.copy(img_path,dst_test_img_path)
                 # shutil.copy(xml_path,dst_test_xml_path)
@@ -110,11 +113,14 @@ def gen_train_val2(date):
     f_train.close()
     f_val.close()
 
-def gen_label_list(date):
+def gen_label_list(date,data_home,type):
     '''
     生成标签列表
     '''
-    xml_dir = f"F:/Datasets/UIED/trainval_data/UIED_{date}/train_val"
+    if type != "":
+        xml_dir = f"{data_home}/trainval_data/UIED_{type}_{date}/train_val"
+    else:
+        xml_dir = f"{data_home}/trainval_data/UIED_{date}/train_val"
     f_labels = open(os.path.join(xml_dir,'../',"label_list.txt"),"w")
     xmls = os.listdir(xml_dir+"/xmls")
     clses = [] 
@@ -130,6 +136,91 @@ def gen_label_list(date):
     for cls in set(clses):
         print(cls)
         f_labels.write(cls+"\n")
+
+
+def write_xml(folder: str, img_name: str, path: str, img_width: int, img_height: int, tag_num: int, tag_names: str, box_list:list,save_path:str,url_id:int=0):
+    '''
+    VOC标注xml文件生成函数
+    :param folder: 文件夹名
+    :param img_name:
+    :param path:
+    :param img_width:
+    :param img_height:
+    :param tag_num: 图片内的标注框数量
+    :param tag_name: 标注名称
+    :param box_list: 标注坐标,其数据格式为[[xmin1, ymin1, xmax1, ymax1],[xmin2, ymin2, xmax2, ymax2]....]
+    :return: a standard VOC format .xml file, named "img_name.xml"
+    '''
+    # 创建dom树对象
+    doc = xml.dom.minidom.Document()
+ 
+    # 创建root结点annotation，并用dom对象添加根结点
+    root_node = doc.createElement("annotation")
+    doc.appendChild(root_node)
+ 
+    # 创建结点并加入到根结点
+    folder_node = doc.createElement("folder")
+    folder_value = doc.createTextNode(folder)
+    folder_node.appendChild(folder_value)
+    root_node.appendChild(folder_node)
+ 
+    filename_node = doc.createElement("filename")
+    filename_value = doc.createTextNode(img_name)
+    filename_node.appendChild(filename_value)
+    root_node.appendChild(filename_node)
+ 
+    path_node = doc.createElement("path")
+    path_value = doc.createTextNode(path)
+    path_node.appendChild(path_value)
+    root_node.appendChild(path_node)
+ 
+    source_node = doc.createElement("source")
+    database_node = doc.createElement("database")
+    database_node.appendChild(doc.createTextNode("Unknown"))
+    source_node.appendChild(database_node)
+    root_node.appendChild(source_node)
+ 
+    size_node = doc.createElement("size")
+    for item, value in zip(["width", "height", "depth"], [img_width, img_height, 3]):
+        elem = doc.createElement(item)
+        elem.appendChild(doc.createTextNode(str(value)))
+        size_node.appendChild(elem)
+    root_node.appendChild(size_node)
+ 
+    seg_node = doc.createElement("segmented")
+    seg_node.appendChild(doc.createTextNode(str(0)))
+    root_node.appendChild(seg_node)
+ 
+    for i in range(tag_num):
+        obj_node = doc.createElement("object")
+        name_node = doc.createElement("name")
+        name_node.appendChild(doc.createTextNode(tag_names[i]))
+        obj_node.appendChild(name_node)
+ 
+        pose_node = doc.createElement("pose")
+        pose_node.appendChild(doc.createTextNode("Unspecified"))
+        obj_node.appendChild(pose_node)
+ 
+        trun_node = doc.createElement("truncated")
+        trun_node.appendChild(doc.createTextNode(str(0)))
+        obj_node.appendChild(trun_node)
+ 
+        trun_node = doc.createElement("difficult")
+        trun_node.appendChild(doc.createTextNode(str(0)))
+        obj_node.appendChild(trun_node)
+ 
+        bndbox_node = doc.createElement("bndbox")
+        for item, value in zip(["xmin", "ymin", "xmax", "ymax"], box_list[i]):
+            elem = doc.createElement(item)
+            elem.appendChild(doc.createTextNode(str(value)))
+            bndbox_node.appendChild(elem)
+        obj_node.appendChild(bndbox_node)
+        root_node.appendChild(obj_node)
+ 
+    with open(os.path.join(save_path,"{}".format(img_name)+ ".xml"), "w", encoding="utf-8") as f:
+        # writexml()第一个参数是目标文件对象，第二个参数是根节点的缩进格式，第三个参数是其他子节点的缩进格式，
+        # 第四个参数制定了换行格式，第五个参数制定了xml内容的编码。
+        doc.writexml(f, indent='', addindent='\t', newl='\n', encoding="utf-8")
 
 def save_img_xml(height,img_path,xml_path,img,cls_names,box_list,dir_id):
     '''
@@ -188,17 +279,17 @@ def save_img_xml(height,img_path,xml_path,img,cls_names,box_list,dir_id):
         img_num += 1
     print(f"{img_num} imgs saved in {img_path}, xmls saved in {xml_path}")
 
-def cut_imgs_xmls(date):
+def cut_imgs_xmls(date,data_home):
     '''
     裁剪图片和标签并保存
     '''
-    data_home = "F:/Datasets/UIED"
+    # data_home = "F:/Datasets/UIED"
     ori_labeld_path = os.path.join(data_home,f"原始标注数据/{date}")
     save_path = os.path.join(data_home,f"裁剪标注数据/{date}")
     dirs = os.listdir(ori_labeld_path)
     height = 1080
     for dir in dirs:
-        if dir in ["cunmin"]:
+        if dir in ["cunmin",'achong']:
             continue
         dir_path = os.path.join(ori_labeld_path,dir)
         img_folder = "imgs"
@@ -213,7 +304,7 @@ def cut_imgs_xmls(date):
         make_dirs(save_dir_path)
         make_dirs(img_save_path)
         make_dirs(xml_save_path)
-        for img in tqdm(imgs):
+        for img in tqdm(imgs[:100]):
             img_name = os.path.splitext(img)[0]
             img_path = os.path.join(dir_path+f"/{img_folder}",img)
             img_data = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
@@ -230,6 +321,7 @@ def cut_imgs_xmls(date):
             box_list = []
             for i,obj in enumerate(objs):
                 cls_name = obj.find('name').text
+                cls_name = "element"
                 cls_list.append(cls_name)
                 bndbox = obj.find('bndbox')
                 xmin = int(float(bndbox.find('xmin').text))
@@ -239,20 +331,25 @@ def cut_imgs_xmls(date):
                 box_list.append([xmin,ymin,xmax,ymax])
             save_img_xml(height,img_save_path,xml_save_path,img_data,cls_list,box_list,img_name)
 
-def pre_label():
+def pre_label(home,type):
     '''
     用训练好的模型做预标注
     '''
     #=========== 初始化模型 =============
-    det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED.onnx"
-    label_path = "weight/label_list.txt"
-    det_net = PicoDet(model_pb_path = det_model_path,label_path = label_path)
+    if type == "":
+        det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0216.onnx"
+        label_path = "weight/label_list.txt"
+    else:
+        det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0218.onnx"
+        label_path = "weight/label_list_ELE.txt"
+
+    det_net = PicoDet(model_pb_path = det_model_path,label_path = label_path,type=type)
 
     # 数据目录
-    data_home = "F:/Datasets/UIED/原始标注数据/2023_02_16/" 
-    save_home = "F:/Datasets/UIED/裁剪标注数据/2023_02_17/"
-    dir = "screen"
-    imgs_path = os.path.join(data_home,dir)        # 截的页面长图文件夹
+    data_home = f"{home}/原始标注数据/2023_02_18/" 
+    save_home = f"{home}/裁剪标注数据/2023_02_20/"
+    dir = "cunmin2"
+    imgs_path = os.path.join(data_home,dir,"imgs")        # 截的页面长图文件夹
 
     # 结果保存路径
     save_imgs_path = os.path.join(save_home,dir,"imgs")     # 裁剪出来的小图
@@ -264,16 +361,16 @@ def pre_label():
     imgs = os.listdir(imgs_path)
     pbar = tqdm(total=len(imgs))
 
-    # def cut_save(img):
-    for img in tqdm(imgs):
+    def cut_save(img):
+    # for img in tqdm(imgs):
         img_name = img.split(".")[0]
         img_path = os.path.join(imgs_path,img)
         try:
             # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
             img = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
         except:
-            continue
-            # return
+            # continue
+            return
         pbar.update(1)
         # 裁剪
         img_num = 0
@@ -298,40 +395,232 @@ def pre_label():
             cls_list = []
             box_list = []
             for item in det_results:
+                conf = item['confidence']
+                if conf < 0.6:
+                    continue
                 cls_name = item["classname"]
+                # cls_name = "ELE"
                 box = item["box"]
                 cls_list.append(cls_name)
                 box_list.append(box)
+                # print(conf,box)
             save_img_name = img_name+"_"+str(img_num)
             save_img_path = os.path.join(save_imgs_path,save_img_name+".jpg")
             # 保存图片和标签
-            # cv2.imwrite(save_img_path,save_img)
             cv2.imencode('.jpg', save_img)[1].tofile(save_img_path)
-            write_xml(save_img_path,save_img_name,save_img_path,im_w,im_h,len(cls_list),cls_list,box_list,save_xmls_path)
+            write_xml(save_img_path,save_img_name,save_img_path,im_w,im_h,len(cls_list),cls_list,box_list,save_xmls_path,0)
             img_num += 1
 
     # 创建多线程处理
-    # pbar = tqdm(total=len(imgs))
-    # pool = ThreadPool(processes=10)
-    # pool.map(cut_save, imgs)
-    # pool.close()
-    # pool.join()
-    # pbar.close()
-      
+    pbar = tqdm(total=len(imgs))
+    pool = ThreadPool(processes=10)
+    pool.map(cut_save, imgs)
+    pool.close()
+    pool.join()
+    pbar.close()
+
+def infer_long(type ,test_path):
+    '''
+    推理测试长图（高度大于屏幕高度的长截图）
+    '''
+    #=========== 初始化模型 =============
+    if type == "":
+        det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0216.onnx"
+        label_path = "weight/label_list.txt"
+    else:
+        det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0218.onnx"
+        label_path = "weight/label_list_ELE.txt"
+
+    det_net = PicoDet(model_pb_path = det_model_path,label_path = label_path,type = type)
+
+    test_imgs = os.listdir(test_path)
+    test_out = os.path.join(test_path,'../',test_path+"_out")
+    make_dirs(test_out)
+    for img in test_imgs:
+        img_name = img.split('.')[0]
+        img_path = os.path.join(test_path,img)
+        try:
+            # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
+            img = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+        except:
+            continue
+            # return
+        img_num = 0
+        ratio = 0.3
+        height = 1080
+        # 每次向下走一步（这里步长设为一屏）
+        step = int(height * ratio)
+        h,w = img.shape[:2]
+        # 裁剪的个数
+        total_num = h // step
+        min_h = int(height * 2/3)
+        while img_num < total_num:
+            # 裁剪图片
+            y_start = img_num*step
+            y_end = img_num*step+height
+            save_img = img[y_start : y_end,:].copy()
+            im_h,im_w = save_img.shape[:2]
+            # 裁剪出来的图片高度小于阈值不要
+            if im_h < min_h:
+                break
+            det_results = det_net.infer(save_img)
+            cls_list = []
+            box_list = []
+            for item in det_results:
+                conf = item['confidence']
+                if conf < 0.6:
+                    continue
+                cls_name = item["classname"]
+                # cls_name = "ELE"
+                box = item["box"]
+                cls_list.append(cls_name)
+                box_list.append(box)
+                cv2.rectangle(save_img, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0,255,0), 2)
+
+            save_img_path = os.path.join(test_out,img_name+"_"+str(img_num)+".jpg")
+            cv2.imencode('.jpg', save_img)[1].tofile(save_img_path)
+            img_num += 1 
+
+
+def infer_short(type,test_path):
+    '''
+    推理测试短图（高度小于等于屏幕高度）
+    '''
+    #=========== 初始化模型 =============
+    if type == "":
+        det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0216.onnx"
+        label_path = "weight/label_list.txt"
+    else:
+        det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE.onnx"
+        label_path = "weight/label_list_ELE.txt"
+    det_net = PicoDet(model_pb_path = det_model_path,label_path = label_path,type=type)
+
+    test_imgs = os.listdir(test_path)
+    test_out = os.path.join(test_path,'../',test_path+"_out")
+    make_dirs(test_out)
+    for img in test_imgs:
+        img_name = img.split('.')[0]
+        img_path = os.path.join(test_path,img)
+        try:
+            # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
+            img = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+        except:
+            continue
+            # return
+        
+        det_results = det_net.infer(img)
+        cls_list = []
+        box_list = []
+        draw_img = img.copy()
+        for item in det_results:
+            conf = item['confidence']
+            if conf < 0.6:
+                continue
+            cls_name = item["classname"]
+            # cls_name = "ELE"
+            box = item["box"]
+            cls_list.append(cls_name)
+            box_list.append(box)
+            cv2.rectangle(draw_img, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0,255,0), 2)
+
+        save_img_path = os.path.join(test_out,img_name+"_"+str(img_num)+".jpg")
+        cv2.imencode('.jpg', draw_img)[1].tofile(save_img_path)
+        img_num += 1 
+
+
+def cut_imgs_for_cls(data_home,date):
+    '''
+    生成分类数据集
+    '''
+    date_path = os.path.join(data_home,"原始数据",date)
+    save_date_path = os.path.join(data_home,"裁剪数据",date)
+    make_dirs(save_date_path)
+    dirs = os.listdir(date_path)
+    # 遍历每个文件夹
+    for dir in tqdm(dirs):
+        dir_path = os.path.join(date_path,dir)
+        imgs_path = os.path.join(dir_path,"imgs")
+        xmls_path = os.path.join(dir_path,"xmls")
+        imgs = os.listdir(imgs_path)
+        # 遍历每张图
+        for img in tqdm(imgs):
+            img_name = img.split('.')[0]
+            img_path = os.path.join(imgs_path,img)
+            img_data = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+            h,w,c = img_data.shape
+            xml_path = os.path.join(xmls_path,img_name+".xml")
+            try:
+                tree,root = read_xml(xml_path)
+            except:
+                print("error xml!")
+                continue
+            objs = tree.findall('object')
+            box_list = []
+            for i,obj in enumerate(objs):
+                bndbox = obj.find('bndbox')
+                delta = 3 # 外扩2个像素
+                xmin = max(int(float(bndbox.find('xmin').text)) - delta,0)
+                ymin = max(int(float(bndbox.find('ymin').text)) - delta,0)
+                xmax = min(int(float(bndbox.find('xmax').text)) + delta,w-1)
+                ymax = min(int(float(bndbox.find('ymax').text)) + delta,h-1)
+                ROI = img_data[ymin:ymax,xmin:xmax]
+                save_img_name = f"{dir}_{img_name}_{i}.jpg"
+                img_save_path = os.path.join(save_date_path,save_img_name)
+                cv2.imencode('.jpg', ROI)[1].tofile(img_save_path)
+
+def gen_train_val_cls(data_home,date):
+    '''
+    生成分类训练和验证数据集
+    '''
+    data_path = os.path.join(data_home,"分类数据",date).replace("\\","/")
+    dirs = [dir for dir in os.listdir(data_path) if os.path.isdir(os.path.join(data_path,dir))]
+    f_train = open(os.path.join(data_path,'train.txt'),"w",encoding="utf-8")
+    f_val = open(os.path.join(data_path,"val.txt"),"w",encoding="utf-8")
+    split = 0.8
+    # 生成训练和验证txt文件
+    for dir in tqdm(dirs):
+        dir_path = os.path.join(data_path,dir)
+        imgs = os.listdir(dir_path)
+        for img in imgs:
+            img_path = os.path.join(dir_path,img).replace('\\','/').replace(data_path+"/","")
+            if random.random() < split:
+                f_train.write(img_path+" "+dir+"\n")
+            else:
+                f_val.write(img_path+" "+dir+"\n")
+
+    print("done!")
+
+
 
 if __name__ == "__main__":
 
+    # 
     
     #=============== UIED原始数据处理和训练数据制作 ===================
-    
-    # date= "2023_02_15"
-    # # 长图裁剪
-    # cut_imgs_xmls(date)
+    home = "F:/Datasets/UIED/block检测"
+    type = ""
+    # home = "F:/Datasets/UIED/元素检测"
+    # type = "ELE"
+    date= "2023_02_20"
+    # 长图裁剪
+    # cut_imgs_xmls(date,home)
     # # 生成训练验证集
-    # gen_train_val2(date)
+    # gen_train_val2(date,home,type)
     # # 生成标签列表
-    # gen_label_list(date)
+    # gen_label_list(date,home,type)
 
     #============= 用训练好的检测模型做预标注 ==========================
-    pre_label()
+    # pre_label(home,type)
 
+    #============= 训练好的模型直接推理看效果 ==========================
+    type = "ELE"
+    test_path = "F:/Datasets/UIED/测试/中文页面检测"
+    # infer_long(type,test_path)
+    # infer_short(test_path)
+
+
+    #============= 裁剪图片，用于分类 ==========================
+    data_home = "Y:/zx-AI_lab/RPA/页面元素检测/元素分类"
+    date = "2023_02_21"
+    cut_imgs_for_cls(data_home,date)
+    # gen_train_val_cls(data_home,date)
