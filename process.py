@@ -6,6 +6,7 @@ import cv2
 from tqdm import tqdm
 import numpy as np
 import shutil
+from resnet import ResNet
 from picodet import PicoDet
 from multiprocessing.dummy import Pool as ThreadPool
 import xml.dom.minidom
@@ -331,7 +332,7 @@ def cut_imgs_xmls(date,data_home):
                 box_list.append([xmin,ymin,xmax,ymax])
             save_img_xml(height,img_save_path,xml_save_path,img_data,cls_list,box_list,img_name)
 
-def pre_label(home,type):
+def pre_label_det(home,type):
     '''
     用训练好的模型做预标注
     '''
@@ -534,6 +535,7 @@ def cut_imgs_for_cls(data_home,date):
     '''
     date_path = os.path.join(data_home,"原始数据",date)
     save_date_path = os.path.join(data_home,"裁剪数据",date)
+    # save_date_path = os.path.join("F:/temp/",date)
     make_dirs(save_date_path)
     dirs = os.listdir(date_path)
     # 遍历每个文件夹
@@ -576,25 +578,182 @@ def gen_train_val_cls(data_home,date):
     dirs = [dir for dir in os.listdir(data_path) if os.path.isdir(os.path.join(data_path,dir))]
     f_train = open(os.path.join(data_path,'train.txt'),"w",encoding="utf-8")
     f_val = open(os.path.join(data_path,"val.txt"),"w",encoding="utf-8")
+    f_label = open(os.path.join(data_path,"labels.txt"),"w",encoding="utf-8")
     split = 0.8
+    total_num = 500
+
     # 生成训练和验证txt文件
-    for dir in tqdm(dirs):
+    for i,dir in tqdm(enumerate(dirs)):
+        cls_name = dir.split('_')[-1]
+        f_label.write(f"{i} {cls_name}\n")
         dir_path = os.path.join(data_path,dir)
         imgs = os.listdir(dir_path)
-        for img in imgs:
+        random.shuffle(imgs)
+        for img in imgs[:total_num]:
             img_path = os.path.join(dir_path,img).replace('\\','/').replace(data_path+"/","")
             if random.random() < split:
-                f_train.write(img_path+" "+dir+"\n")
+                f_train.write(img_path+" "+str(i)+"\n")
             else:
-                f_val.write(img_path+" "+dir+"\n")
-
+                f_val.write(img_path+" "+str(i)+"\n")
+    f_train.close()
+    f_val.close()
+    f_label.close()
     print("done!")
 
 
+def pre_label_cls(data_home):
+    '''
+    用预训练分类模型做预标注
+    '''
+    cls_model_path = "weight/best_model_5_2.onnx"
+    label_list_path = "weight/label_list_cls.txt"
+    # 初始化分类模型
+    cls_net = ResNet(model_pb_path = cls_model_path,label_path = label_list_path)
+    save_path = data_home+"_out"
+    make_dirs(save_path)
+    imgs = os.listdir(data_home)
+    for img in tqdm(imgs):
+        img_path = os.path.join(data_home,img)
+        try:
+            img_data = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+            result = cls_net.cls_onnx(img_data)
+            cls_path = os.path.join(save_path,result["label"])
+            make_dirs(cls_path)
+            shutil.copy(img_path,os.path.join(cls_path,img))
+            print(result)
+
+        except Exception as e:
+            print(e)
+            continue
+    print(f"img saved in {save_path}")
+
+def match():
+    '''
+    用模板匹配的方法辅助对数据做分类
+    '''
+    tmplates_path = "F:/temp/templates_ico"
+    tmps = os.listdir(tmplates_path)
+    tmps_data = []
+    for tmp in tmps:
+        tmp_path = os.path.join(tmplates_path,tmp)
+        tmp_data = cv2.imread(tmp_path,cv2.IMREAD_COLOR)
+        tmps_data.append(tmp_data)
+
+    method = "cv2.TM_CCOEFF"
+    method = 'cv2.TM_SQDIFF_NORMED'
+    method = "cv2.TM_CCOEFF_NORMED"         # 值越大越好 
+    test_path = "F:/temp/2023_02_21"
+    save_path = "F:/temp/2023_02_21_ico"
+    # save_path = "F:/temp/2023_02_21_按钮1"
+    make_dirs(save_path)
+    test_imgs = os.listdir(test_path)
+
+    def func(img):
+        pbar.update(1)
+    # for img in tqdm(test_imgs):
+        img_path = os.path.join(test_path,img)
+        img_data = cv2.imread(img_path,cv2.IMREAD_COLOR)
+        imh,imw,c = img_data.shape
+        min_sim = 10000
+        max_sim = -10000
+        for i,tmp in enumerate(tmps_data):
+            tmph,tmpw,tmpc = tmp.shape
+            if imh < tmph -5 or imw < tmpw -5 :
+                continue
+            img_data = cv2.resize(img_data,(tmpw,tmph))
+            res = cv2.matchTemplate(img_data, tmp, eval(method))
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            if min_val < min_sim:
+                min_sim = min_val
+            if max_val > max_sim:
+                max_sim = max_val
+
+        # if min_sim < 0.008:
+        if max_sim > 0.2:
+            shutil.move(img_path,os.path.join(save_path,img))
+    
+    pbar = tqdm(total=len(test_imgs))
+    pool = ThreadPool(processes=10)
+    pool.map(func, test_imgs)
+    pool.close()
+    pool.join()
+    pbar.close()
+
+def pre_label_for_multicls_det():
+    '''
+    用预训练的分类模型对目标检测的类别标签做预标注
+    '''
+    # 初始化分类模型
+    cls_model_path = "weight/best_model_5_mc.onnx"
+    label_list_path = "weight/label_list_cls.txt"
+    cls_net = ResNet(model_pb_path = cls_model_path,label_path = label_list_path)
+    data_home  = "Y:/zx-AI_lab/RPA/页面元素检测/元素分类/原始数据/2023_02_21"
+
+    save_home = "F:/Datasets/UIED/元素检测/原始标注数据/2023_02_21"
+
+    dirs = os.listdir(data_home)
+    for dir in dirs:
+        print(dir)
+        dir_path = os.path.join(data_home,dir)
+        imgs_path = os.path.join(dir_path,"imgs")
+        xmls_path = os.path.join(dir_path,"xmls")
+        save_dir = os.path.join(save_home,dir)
+        make_dirs(save_dir)
+        imgs = [img for img in os.listdir(imgs_path) if os.path.splitext(img)[-1] in ['.jpg','.png']]
+        for img in tqdm(imgs):
+            img_name = os.path.splitext(img)[0]
+            img_path = os.path.join(imgs_path,img)
+            try:
+                img_data = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+                h,w,c = img_data.shape
+            except Exception as e:
+                print(e)
+                continue
+            
+            # 读取xml标注文件
+            xml_path = os.path.join(xmls_path,img_name+".xml")
+            try:
+                tree,root = read_xml(xml_path)
+            except Exception as e:
+                print(e)
+                continue
+            objs = tree.findall('object')
+            box_list = []
+            
+            # 预测并修改box的类比
+            def modify_label(obj):
+            # for i,obj in enumerate(objs):
+                pbar.update(1)
+                bndbox = obj.find('bndbox')
+                delta = 3 # 外扩2个像素
+                xmin = max(int(float(bndbox.find('xmin').text)) - delta,0)
+                ymin = max(int(float(bndbox.find('ymin').text)) - delta,0)
+                xmax = min(int(float(bndbox.find('xmax').text)) + delta,w-1)
+                ymax = min(int(float(bndbox.find('ymax').text)) + delta,h-1)
+                ROI = img_data[ymin:ymax,xmin:xmax]
+                # 分类
+                result = cls_net.cls_onnx(ROI)
+                obj.find('name').text = result["label"]
+            
+            pbar = tqdm(total=len(objs))
+            pool = ThreadPool(processes=10)
+            pool.map(modify_label, objs)
+            pool.close()
+            pool.join()
+            pbar.close()
+
+            # 保存为新的xml
+            save_imgs_path = os.path.join(save_dir,"imgs")
+            save_xmls_path = os.path.join(save_dir,"xmls")
+            make_dirs(save_imgs_path)
+            make_dirs(save_xmls_path)
+            save_img_path = os.path.join(save_imgs_path,img)
+            shutil.copy(img_path,save_img_path)
+            save_xml_path = save_xmls_path+"/"+img_name+".xml"
+            tree.write(save_xml_path, encoding="utf-8",xml_declaration=True)
+
 
 if __name__ == "__main__":
-
-    # 
     
     #=============== UIED原始数据处理和训练数据制作 ===================
     home = "F:/Datasets/UIED/block检测"
@@ -610,7 +769,7 @@ if __name__ == "__main__":
     # gen_label_list(date,home,type)
 
     #============= 用训练好的检测模型做预标注 ==========================
-    # pre_label(home,type)
+    # pre_label_det(home,type)
 
     #============= 训练好的模型直接推理看效果 ==========================
     type = "ELE"
@@ -620,7 +779,19 @@ if __name__ == "__main__":
 
 
     #============= 裁剪图片，用于分类 ==========================
-    data_home = "Y:/zx-AI_lab/RPA/页面元素检测/元素分类"
+    data_home = "F:/Datasets/UIED/元素分类"
     date = "2023_02_21"
-    cut_imgs_for_cls(data_home,date)
+    # cut_imgs_for_cls(data_home,date)
     # gen_train_val_cls(data_home,date)
+
+    #============= 用训练好的分类模型做分类预测 ==========================
+    data_home = "F:/Datasets/UIED/元素分类/裁剪数据/2023_02_21"
+    # pre_label_cls(data_home)
+
+    #============= 用训练好的分类模型给检测数据打标 ==========================
+    # 单类别长图打标成多类别
+    pre_label_for_multicls_det()
+    # 长图裁剪成短图用于训练
+    # cut_imgs_xmls(date,home)
+
+    # match()
