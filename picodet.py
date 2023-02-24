@@ -363,6 +363,7 @@ class PicoDet():
     def __init__(self,
                  model_pb_path,
                  label_path,
+                 type = "",
                  prob_threshold=0.6,
                  nms_threshold=0.3):
         # 读取类别文件，获取类别列表
@@ -394,6 +395,7 @@ class PicoDet():
             for k, v in zip(inputs_name, self.net.get_inputs())
         }
         self.input_shape = inputs_shape['image'][2:]
+        self.use_norm = type=="" 
 
 
     def onnx_init(self,model_path):
@@ -470,7 +472,8 @@ class PicoDet():
         # 缩放到推理尺寸
         img, im_shape, scale_factor = self.resize_image(srcimg)
         img = img[:,:,::-1]
-        img = img / 255
+        if self.use_norm:
+            img = img / 255
         # 维度转置+添加维度
         blob = np.expand_dims(np.transpose(img, (2, 0, 1)), axis=0).astype(np.float32)
         inputs_dict = {
