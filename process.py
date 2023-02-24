@@ -580,7 +580,7 @@ def gen_train_val_cls(data_home,date):
     f_val = open(os.path.join(data_path,"val.txt"),"w",encoding="utf-8")
     f_label = open(os.path.join(data_path,"labels.txt"),"w",encoding="utf-8")
     split = 0.8
-    total_num = 500
+    total_num = 1000
 
     # 生成训练和验证txt文件
     for i,dir in tqdm(enumerate(dirs)):
@@ -588,7 +588,13 @@ def gen_train_val_cls(data_home,date):
         f_label.write(f"{i} {cls_name}\n")
         dir_path = os.path.join(data_path,dir)
         imgs = os.listdir(dir_path)
+        img_num = len(imgs)
         random.shuffle(imgs)
+        # 图片数不足的，重复取
+        if img_num < total_num:
+            times = total_num // img_num
+            rest = total_num % img_num
+            imgs = imgs*times + imgs[:rest]
         for img in imgs[:total_num]:
             img_path = os.path.join(dir_path,img).replace('\\','/').replace(data_path+"/","")
             if random.random() < split:
@@ -782,7 +788,7 @@ if __name__ == "__main__":
     data_home = "F:/Datasets/UIED/元素分类"
     date = "2023_02_21"
     # cut_imgs_for_cls(data_home,date)
-    # gen_train_val_cls(data_home,date)
+    gen_train_val_cls(data_home,date)
 
     #============= 用训练好的分类模型做分类预测 ==========================
     data_home = "F:/Datasets/UIED/元素分类/裁剪数据/2023_02_21"
@@ -790,7 +796,7 @@ if __name__ == "__main__":
 
     #============= 用训练好的分类模型给检测数据打标 ==========================
     # 单类别长图打标成多类别
-    pre_label_for_multicls_det()
+    # pre_label_for_multicls_det()
     # 长图裁剪成短图用于训练
     # cut_imgs_xmls(date,home)
 
