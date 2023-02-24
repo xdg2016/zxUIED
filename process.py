@@ -587,7 +587,7 @@ def gen_train_val_cls(data_home,date):
         cls_name = dir.split('_')[-1]
         f_label.write(f"{i} {cls_name}\n")
         dir_path = os.path.join(data_path,dir)
-        imgs = os.listdir(dir_path)
+        imgs = [img for img in os.listdir(dir_path) if os.path.splitext()[-1] in ['.jpg','.png']]
         img_num = len(imgs)
         random.shuffle(imgs)
         # 图片数不足的，重复取
