@@ -12,13 +12,15 @@ from multiprocessing.dummy import Pool as ThreadPool
 import xml.dom.minidom
 from utils import *
 
-def gen_train_val():
+def gen_train_val(data_home):
     '''
-    生成训练验证数据集，没有子文件夹
+    生成训练验证数据集，data_home路径下没有子文件夹，只有imgs和xmls
+    args:
+        data_home: 数据集根目录
+    return:
+        None
     '''
-    data_home = "F:/Datasets/UIED/tmp2"
     trainval_data_home = data_home
-
     f_train = open(trainval_data_home+"/train.txt","w",encoding="utf-8")
     f_val = open(trainval_data_home+"/val.txt","w",encoding="utf-8")
     
@@ -32,7 +34,6 @@ def gen_train_val():
         dst_xml_path = trainval_data_home+'/train_val/xmls/'+img_name+".xml"
         if not os.path.exists(img_path) or not os.path.exists(xml_path):
             continue
-
         if random.random() > 0.1:
             f_train.write(f"{dst_img_path.replace(trainval_data_home,'.')} {dst_xml_path.replace(trainval_data_home,'.')}\r")
         else:
@@ -41,10 +42,15 @@ def gen_train_val():
     f_train.close()
     f_val.close()
 
-
 def gen_train_val2(date,data_home,type):
     '''
-    生成训练验证数据集,多个子文件夹
+    生成训练验证数据集,data_home文件夹下有多个子文件夹，每个子文件夹下有imgs和xmls
+    args:
+        date: 数据日期
+        data_home: 数据根目录
+        type: 检测类型，block还是元素
+    return:
+        None
     '''
     # data_home = "F:/Datasets/UIED"
     origin_data_home = data_home+f"/裁剪标注数据/{date}"
@@ -103,6 +109,12 @@ def gen_train_val2(date,data_home,type):
 def gen_label_list(date,data_home,type):
     '''
     生成标签列表
+    args:
+        date: 数据日期
+        data_home: 数据根目录
+        type: 检测类型，block还是元素
+    return:
+        None
     '''
     if type != "":
         xml_dir = f"{data_home}/trainval_data/UIED_{type}_{date}/train_val"
@@ -124,19 +136,20 @@ def gen_label_list(date,data_home,type):
         print(cls)
         f_labels.write(cls+"\n")
 
-
 def write_xml(folder: str, img_name: str, path: str, img_width: int, img_height: int, tag_num: int, tag_names: str, box_list:list,save_path:str,url_id:int=0):
     '''
     VOC标注xml文件生成函数
-    :param folder: 文件夹名
-    :param img_name:
-    :param path:
-    :param img_width:
-    :param img_height:
-    :param tag_num: 图片内的标注框数量
-    :param tag_name: 标注名称
-    :param box_list: 标注坐标,其数据格式为[[xmin1, ymin1, xmax1, ymax1],[xmin2, ymin2, xmax2, ymax2]....]
-    :return: a standard VOC format .xml file, named "img_name.xml"
+    args:
+        folder: 文件夹名
+        img_name: 图片的名字，不含后缀
+        path: 图片完整路径   
+        img_width: 图像宽
+        img_height: 图像高
+        tag_num: 图片内的标注框的数量
+        tag_name: 类别名称
+        box_list: 标注坐标,其数据格式为[[xmin1, ymin1, xmax1, ymax1],[xmin2, ymin2, xmax2, ymax2]....]
+    return:
+        None
     '''
     # 创建dom树对象
     doc = xml.dom.minidom.Document()
@@ -205,13 +218,26 @@ def write_xml(folder: str, img_name: str, path: str, img_width: int, img_height:
         root_node.appendChild(obj_node)
  
     with open(os.path.join(save_path,"{}".format(img_name)+ ".xml"), "w", encoding="utf-8") as f:
-        # writexml()第一个参数是目标文件对象，第二个参数是根节点的缩进格式，第三个参数是其他子节点的缩进格式，
-        # 第四个参数制定了换行格式，第五个参数制定了xml内容的编码。
+        # writexml()第一个参数是目标文件对象
+        # 第二个参数是根节点的缩进格式
+        # 第三个参数是其他子节点的缩进格式
+        # 第四个参数制定了换行格式
+        # 第五个参数制定了xml内容的编码。
         doc.writexml(f, indent='', addindent='\t', newl='\n', encoding="utf-8")
 
 def save_img_xml(height,img_path,xml_path,img,cls_names,box_list,dir_id):
     '''
-    裁剪一块块的图片，并取出对应的标签
+    将网页长截图，裁剪成固定高度的图片，并取出对应的标签
+    args:
+        height: 子图的高度
+        img_path: 图片保存路径
+        xml_path: 标签保存路径
+        img: 原始长截图数据
+        cls_names: 类别标签列表
+        box_list: 标注框列表
+        dir_id: 当前长截图所在文件夹的名字，用于保存图片时区分文件夹
+    return:
+        None
     '''
     img_num = 0
     ratio = 0.3
@@ -334,12 +360,14 @@ def cut_imgs_xmls(date,data_home,union_label="",exclude_labels = []):
         pool.join()
         pbar.close()
 
-def pre_label_det(home,type):
+def pre_label_for_det(home,type):
     '''
     用训练好的模型做预标注
     args:
         home: 数据根目录
         type: 打标类型，属于区块还是元素
+    return:
+        None
     '''
     #=========== 初始化模型 =============
     if type == "":
@@ -425,126 +453,14 @@ def pre_label_det(home,type):
     pool.join()
     pbar.close()
 
-def infer_long(type ,test_path):
-    '''
-    推理测试长图（高度大于屏幕高度的长截图）
-    args:
-        type: 推理的任务类型，区块还是元素
-        test_path: 测试图片路径
-    '''
-    #=========== 初始化模型 =============
-    if type == "":
-        det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0216.onnx"
-        label_path = "weight/label_list.txt"
-    else:
-        det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0218.onnx"
-        label_path = "weight/label_list_ELE.txt"
-
-    det_net = PicoDet(model_pb_path = det_model_path,label_path = label_path,type = type)
-
-    test_imgs = os.listdir(test_path)
-    test_out = os.path.join(test_path,'../',test_path+"_out")
-    make_dirs(test_out)
-    for img in test_imgs:
-        img_name = img.split('.')[0]
-        img_path = os.path.join(test_path,img)
-        try:
-            # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
-            img = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
-        except:
-            continue
-            # return
-        img_num = 0
-        ratio = 0.3
-        height = 1080
-        # 每次向下走一步（这里步长设为一屏）
-        step = int(height * ratio)
-        h,w = img.shape[:2]
-        # 裁剪的个数
-        total_num = h // step
-        min_h = int(height * 2/3)
-        while img_num < total_num:
-            # 裁剪图片
-            y_start = img_num*step
-            y_end = img_num*step+height
-            save_img = img[y_start : y_end,:].copy()
-            im_h,im_w = save_img.shape[:2]
-            # 裁剪出来的图片高度小于阈值不要
-            if im_h < min_h:
-                break
-            det_results = det_net.infer(save_img)
-            cls_list = []
-            box_list = []
-            for item in det_results:
-                conf = item['confidence']
-                if conf < 0.6:
-                    continue
-                cls_name = item["classname"]
-                # cls_name = "ELE"
-                box = item["box"]
-                cls_list.append(cls_name)
-                box_list.append(box)
-                cv2.rectangle(save_img, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0,255,0), 2)
-
-            save_img_path = os.path.join(test_out,img_name+"_"+str(img_num)+".jpg")
-            cv2.imencode('.jpg', save_img)[1].tofile(save_img_path)
-            img_num += 1 
-
-def infer_short(type,test_path):
-    '''
-    推理测试短图（高度小于等于屏幕高度）
-    args:
-        type: 推理的任务类型，区块还是元素
-        test_path: 测试图片路径
-    '''
-    #=========== 初始化模型 =============
-    if type == "":
-        det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0216.onnx"
-        label_path = "weight/label_list.txt"
-    else:
-        det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE.onnx"
-        label_path = "weight/label_list_ELE.txt"
-    det_net = PicoDet(model_pb_path = det_model_path,label_path = label_path,type=type)
-
-    test_imgs = os.listdir(test_path)
-    test_out = os.path.join(test_path,'../',test_path+"_out")
-    make_dirs(test_out)
-    for img in test_imgs:
-        img_name = img.split('.')[0]
-        img_path = os.path.join(test_path,img)
-        try:
-            # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
-            img = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
-        except:
-            continue
-            # return
-        
-        det_results = det_net.infer(img)
-        cls_list = []
-        box_list = []
-        draw_img = img.copy()
-        for item in det_results:
-            conf = item['confidence']
-            if conf < 0.6:
-                continue
-            cls_name = item["classname"]
-            # cls_name = "ELE"
-            box = item["box"]
-            cls_list.append(cls_name)
-            box_list.append(box)
-            cv2.rectangle(draw_img, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0,255,0), 2)
-
-        save_img_path = os.path.join(test_out,img_name+"_"+str(img_num)+".jpg")
-        cv2.imencode('.jpg', draw_img)[1].tofile(save_img_path)
-        img_num += 1 
-
-
 def cut_imgs_for_cls(data_home,date):
     '''
     生成分类数据集
     args:
         data_home: 数据根目录
         date:   数据日期
+    returns:
+        None
     '''
     date_path = os.path.join(data_home,"原始数据",date)
     save_date_path = os.path.join(data_home,"裁剪数据",date)
@@ -589,6 +505,8 @@ def gen_train_val_cls(data_home,date):
     args:
         data_home: 数据根目录
         date:   数据日期
+    returns:
+        None
     '''
     data_path = os.path.join(data_home,"分类数据",date).replace("\\","/")
     dirs = [dir for dir in os.listdir(data_path) if os.path.isdir(os.path.join(data_path,dir))]
@@ -622,14 +540,13 @@ def gen_train_val_cls(data_home,date):
     f_label.close()
     print("done!")
 
-
 def pre_label_cls(data_home):
     '''
     用预训练分类模型做预标注
     args:
         data_home: 数据根目录
     '''
-    cls_model_path = "weight/best_model_5_2.onnx"
+    cls_model_path = "weight/ResNet50_5_1000.onnx"
     label_list_path = "weight/label_list_cls.txt"
     # 初始化分类模型
     cls_net = ResNet(model_pb_path = cls_model_path,label_path = label_list_path)
@@ -651,64 +568,12 @@ def pre_label_cls(data_home):
             continue
     print(f"img saved in {save_path}")
 
-def match():
-    '''
-    用模板匹配的方法辅助对数据做分类
-    '''
-    tmplates_path = "F:/temp/templates_ico"
-    tmps = os.listdir(tmplates_path)
-    tmps_data = []
-    for tmp in tmps:
-        tmp_path = os.path.join(tmplates_path,tmp)
-        tmp_data = cv2.imread(tmp_path,cv2.IMREAD_COLOR)
-        tmps_data.append(tmp_data)
-
-    method = "cv2.TM_CCOEFF"
-    method = 'cv2.TM_SQDIFF_NORMED'
-    method = "cv2.TM_CCOEFF_NORMED"         # 值越大越好 
-    test_path = "F:/temp/2023_02_21"
-    save_path = "F:/temp/2023_02_21_ico"
-    # save_path = "F:/temp/2023_02_21_按钮1"
-    make_dirs(save_path)
-    test_imgs = os.listdir(test_path)
-
-    def func(img):
-        pbar.update(1)
-    # for img in tqdm(test_imgs):
-        img_path = os.path.join(test_path,img)
-        img_data = cv2.imread(img_path,cv2.IMREAD_COLOR)
-        imh,imw,c = img_data.shape
-        min_sim = 10000
-        max_sim = -10000
-        for i,tmp in enumerate(tmps_data):
-            tmph,tmpw,tmpc = tmp.shape
-            if imh < tmph -5 or imw < tmpw -5 :
-                continue
-            img_data = cv2.resize(img_data,(tmpw,tmph))
-            res = cv2.matchTemplate(img_data, tmp, eval(method))
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            if min_val < min_sim:
-                min_sim = min_val
-            if max_val > max_sim:
-                max_sim = max_val
-
-        # if min_sim < 0.008:
-        if max_sim > 0.2:
-            shutil.move(img_path,os.path.join(save_path,img))
-    
-    pbar = tqdm(total=len(test_imgs))
-    pool = ThreadPool(processes=10)
-    pool.map(func, test_imgs)
-    pool.close()
-    pool.join()
-    pbar.close()
-
 def pre_label_for_multicls_det():
     '''
     用预训练的分类模型对目标检测的类别标签做预标注
     '''
     # 初始化分类模型
-    cls_model_path = "weight/best_model_5_mc_1000.onnx"
+    cls_model_path = "weight/ResNet50_5_mc_1000.onnx"
     label_list_path = "weight/label_list_cls.txt"
     cls_net = ResNet(model_pb_path = cls_model_path,label_path = label_list_path)
     data_home  = "Y:/zx-AI_lab/RPA/页面元素检测/元素分类/原始数据/2023_02_21"
@@ -782,6 +647,8 @@ def pre_label_for_block_ELEs(data_home,save_path):
     args:
         data_home: 数据根目录
         save_path: 打标类型，属于区块还是元素
+    returns:
+        None
     '''
     #=========== 初始化模型 =============
     
@@ -880,14 +747,131 @@ def pre_label_for_block_ELEs(data_home,save_path):
         pool.join()
         pbar.close()
 
-    pass
+def infer_long(type ,test_path):
+    '''
+    推理测试长图（高度大于屏幕高度的长截图）
+    args:
+        type: 推理的任务类型，区块还是元素
+        test_path: 测试图片路径
+    returns:
+        None
+    '''
+    #=========== 初始化模型 =============
+    if type == "":
+        det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0216.onnx"
+        label_path = "weight/label_list.txt"
+    else:
+        det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0218.onnx"
+        label_path = "weight/label_list_ELE.txt"
+
+    det_net = PicoDet(model_pb_path = det_model_path,label_path = label_path,type = type)
+
+    test_imgs = os.listdir(test_path)
+    test_out = os.path.join(test_path,'../',test_path+"_out")
+    make_dirs(test_out)
+    for img in test_imgs:
+        img_name = img.split('.')[0]
+        img_path = os.path.join(test_path,img)
+        try:
+            # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
+            img = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+        except:
+            continue
+            # return
+        img_num = 0
+        ratio = 0.3
+        height = 1080
+        # 每次向下走一步（这里步长设为一屏）
+        step = int(height * ratio)
+        h,w = img.shape[:2]
+        # 裁剪的个数
+        total_num = h // step
+        min_h = int(height * 2/3)
+        while img_num < total_num:
+            # 裁剪图片
+            y_start = img_num*step
+            y_end = img_num*step+height
+            save_img = img[y_start : y_end,:].copy()
+            im_h,im_w = save_img.shape[:2]
+            # 裁剪出来的图片高度小于阈值不要
+            if im_h < min_h:
+                break
+            det_results = det_net.infer(save_img)
+            cls_list = []
+            box_list = []
+            for item in det_results:
+                conf = item['confidence']
+                if conf < 0.6:
+                    continue
+                cls_name = item["classname"]
+                # cls_name = "ELE"
+                box = item["box"]
+                cls_list.append(cls_name)
+                box_list.append(box)
+                cv2.rectangle(save_img, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0,255,0), 2)
+
+            save_img_path = os.path.join(test_out,img_name+"_"+str(img_num)+".jpg")
+            cv2.imencode('.jpg', save_img)[1].tofile(save_img_path)
+            img_num += 1 
+
+def infer_short(type,test_path):
+    '''
+    推理测试短图（高度小于等于屏幕高度）
+    args:
+        type: 推理的任务类型，区块还是元素
+        test_path: 测试图片路径
+    returns:
+        None
+    '''
+    #=========== 初始化模型 =============
+    if type == "":
+        det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0216.onnx"
+        label_path = "weight/label_list.txt"
+    else:
+        det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE.onnx"
+        label_path = "weight/label_list_ELE.txt"
+    det_net = PicoDet(model_pb_path = det_model_path,label_path = label_path,type=type)
+
+    test_imgs = os.listdir(test_path)
+    test_out = os.path.join(test_path,'../',test_path+"_out")
+    make_dirs(test_out)
+    for img in test_imgs:
+        img_name = img.split('.')[0]
+        img_path = os.path.join(test_path,img)
+        try:
+            # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
+            img = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+        except:
+            continue
+            # return
+        
+        det_results = det_net.infer(img)
+        cls_list = []
+        box_list = []
+        draw_img = img.copy()
+        for item in det_results:
+            conf = item['confidence']
+            if conf < 0.6:
+                continue
+            cls_name = item["classname"]
+            # cls_name = "ELE"
+            box = item["box"]
+            cls_list.append(cls_name)
+            box_list.append(box)
+            cv2.rectangle(draw_img, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0,255,0), 2)
+
+        save_img_path = os.path.join(test_out,img_name+"_"+str(img_num)+".jpg")
+        cv2.imencode('.jpg', draw_img)[1].tofile(save_img_path)
+        img_num += 1 
 
 def infer_block_ELEs(data_home,save_path):
     '''
-    用训练好的模型做block和elements检测，用于整合输出
+    用训练好的模型做block和elements检测推理
     args:
         test_home: 数据根目录
         save_path: 打标类型，属于区块还是元素
+    returns:
+        None
     '''
     #=========== 初始化模型 =============
     
@@ -957,6 +941,57 @@ def infer_block_ELEs(data_home,save_path):
     pool.join()
     pbar.close()
 
+def match():
+    '''
+    用模板匹配的方法辅助对数据做分类
+    '''
+    tmplates_path = "F:/temp/templates_ico"
+    tmps = os.listdir(tmplates_path)
+    tmps_data = []
+    for tmp in tmps:
+        tmp_path = os.path.join(tmplates_path,tmp)
+        tmp_data = cv2.imread(tmp_path,cv2.IMREAD_COLOR)
+        tmps_data.append(tmp_data)
+
+    method = "cv2.TM_CCOEFF"
+    method = 'cv2.TM_SQDIFF_NORMED'
+    method = "cv2.TM_CCOEFF_NORMED"         # 值越大越好 
+    test_path = "F:/temp/2023_02_21"
+    save_path = "F:/temp/2023_02_21_ico"
+    # save_path = "F:/temp/2023_02_21_按钮1"
+    make_dirs(save_path)
+    test_imgs = os.listdir(test_path)
+
+    def func(img):
+        pbar.update(1)
+    # for img in tqdm(test_imgs):
+        img_path = os.path.join(test_path,img)
+        img_data = cv2.imread(img_path,cv2.IMREAD_COLOR)
+        imh,imw,c = img_data.shape
+        min_sim = 10000
+        max_sim = -10000
+        for i,tmp in enumerate(tmps_data):
+            tmph,tmpw,tmpc = tmp.shape
+            if imh < tmph -5 or imw < tmpw -5 :
+                continue
+            img_data = cv2.resize(img_data,(tmpw,tmph))
+            res = cv2.matchTemplate(img_data, tmp, eval(method))
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            if min_val < min_sim:
+                min_sim = min_val
+            if max_val > max_sim:
+                max_sim = max_val
+
+        # if min_sim < 0.008:
+        if max_sim > 0.2:
+            shutil.move(img_path,os.path.join(save_path,img))
+    
+    pbar = tqdm(total=len(test_imgs))
+    pool = ThreadPool(processes=10)
+    pool.map(func, test_imgs)
+    pool.close()
+    pool.join()
+    pbar.close()
 
 if __name__ == "__main__":
     
@@ -974,14 +1009,13 @@ if __name__ == "__main__":
     # gen_label_list(date,home,type)
 
     #============= 用训练好的检测模型做预标注 ==========================
-    # pre_label_det(home,type)
+    # pre_label_for_det(home,type)
 
     #============= 训练好的模型直接推理看效果 ==========================
     type = "ELE"
     test_path = "F:/Datasets/UIED/测试/中文页面检测"
     # infer_long(type,test_path)
     # infer_short(test_path)
-
 
     #============= 裁剪图片，用于分类 ==========================
     data_home = "F:/Datasets/UIED/元素分类"
@@ -994,6 +1028,9 @@ if __name__ == "__main__":
     # pre_label_cls(data_home)
 
     #============= 用训练好的分类模型给检测数据打标 ==========================
+    # 用模板匹配的方法自动粗分类
+    # match()
+
     # 单类别长图打标成多类别
     # pre_label_for_multicls_det()
 
@@ -1011,10 +1048,7 @@ if __name__ == "__main__":
     # # 生成标签列表
     # gen_label_list(date,home,type)
 
-    # match()
-
     #============= 用训练好的block检测模型和多类元素检测模型做预测 =================
-
     data_home = "F:/Datasets/UIED/元素检测/原始标注数据/2023_02_21"
     save_path = data_home+"_block_ELE"
     # pre_label_for_block_ELEs(data_home,save_path)
