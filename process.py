@@ -1,5 +1,5 @@
 
-import xml.etree.ElementTree as ET
+
 import os
 import random
 import cv2
@@ -10,21 +10,7 @@ from resnet import ResNet
 from picodet import PicoDet
 from multiprocessing.dummy import Pool as ThreadPool
 import xml.dom.minidom
-
-def read_xml(xml_path):
-    '''
-    读取xml模板
-    '''
-    try:
-        tree = ET.parse(xml_path)
-        root = tree.getroot()
-        return tree,root
-    except:
-        return None
-    
-def make_dirs(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
+from utils import *
 
 def gen_train_val():
     '''
@@ -280,9 +266,14 @@ def save_img_xml(height,img_path,xml_path,img,cls_names,box_list,dir_id):
         img_num += 1
     print(f"{img_num} imgs saved in {img_path}, xmls saved in {xml_path}")
 
-def cut_imgs_xmls(date,data_home):
+def cut_imgs_xmls(date,data_home,union_label="",exclude_labels = []):
     '''
     裁剪图片和标签并保存
+    args:
+        date: 数据日期
+        data_hoeme: 数据根目录
+        union_label: 是否使用同一个统一的标签，如全部全部都只当一个类别 
+        exclude_labels: 哪些标签不用导出
     '''
     # data_home = "F:/Datasets/UIED"
     ori_labeld_path = os.path.join(data_home,f"原始标注数据/{date}")
@@ -290,8 +281,8 @@ def cut_imgs_xmls(date,data_home):
     dirs = os.listdir(ori_labeld_path)
     height = 1080
     for dir in dirs:
-        if dir in ["cunmin",'achong']:
-            continue
+        # if dir in ["cunmin",'achong']:
+        #     continue
         dir_path = os.path.join(ori_labeld_path,dir)
         img_folder = "imgs"
         try:
@@ -305,7 +296,10 @@ def cut_imgs_xmls(date,data_home):
         make_dirs(save_dir_path)
         make_dirs(img_save_path)
         make_dirs(xml_save_path)
-        for img in tqdm(imgs[:100]):
+
+        def func(img):
+            pbar.update(1)
+        # for img in tqdm(imgs[:100]):
             img_name = os.path.splitext(img)[0]
             img_path = os.path.join(dir_path+f"/{img_folder}",img)
             img_data = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
@@ -314,15 +308,17 @@ def cut_imgs_xmls(date,data_home):
                 tree,root = read_xml(xml_path)
             except:
                 print("error xml!")
-                continue
-                
+                # continue
             objs = tree.findall('object')
-
             cls_list = []
             box_list = []
             for i,obj in enumerate(objs):
                 cls_name = obj.find('name').text
-                cls_name = "element"
+                if union_label != "":
+                    cls_name = "element"
+                # 排除某些标签
+                if cls_name in exclude_labels:
+                    continue
                 cls_list.append(cls_name)
                 bndbox = obj.find('bndbox')
                 xmin = int(float(bndbox.find('xmin').text))
@@ -331,10 +327,19 @@ def cut_imgs_xmls(date,data_home):
                 ymax = int(float(bndbox.find('ymax').text))
                 box_list.append([xmin,ymin,xmax,ymax])
             save_img_xml(height,img_save_path,xml_save_path,img_data,cls_list,box_list,img_name)
+        pbar = tqdm(total=len(imgs))
+        pool = ThreadPool(processes=10)
+        pool.map(func, imgs)
+        pool.close()
+        pool.join()
+        pbar.close()
 
 def pre_label_det(home,type):
     '''
     用训练好的模型做预标注
+    args:
+        home: 数据根目录
+        type: 打标类型，属于区块还是元素
     '''
     #=========== 初始化模型 =============
     if type == "":
@@ -423,6 +428,9 @@ def pre_label_det(home,type):
 def infer_long(type ,test_path):
     '''
     推理测试长图（高度大于屏幕高度的长截图）
+    args:
+        type: 推理的任务类型，区块还是元素
+        test_path: 测试图片路径
     '''
     #=========== 初始化模型 =============
     if type == "":
@@ -482,10 +490,12 @@ def infer_long(type ,test_path):
             cv2.imencode('.jpg', save_img)[1].tofile(save_img_path)
             img_num += 1 
 
-
 def infer_short(type,test_path):
     '''
     推理测试短图（高度小于等于屏幕高度）
+    args:
+        type: 推理的任务类型，区块还是元素
+        test_path: 测试图片路径
     '''
     #=========== 初始化模型 =============
     if type == "":
@@ -532,6 +542,9 @@ def infer_short(type,test_path):
 def cut_imgs_for_cls(data_home,date):
     '''
     生成分类数据集
+    args:
+        data_home: 数据根目录
+        date:   数据日期
     '''
     date_path = os.path.join(data_home,"原始数据",date)
     save_date_path = os.path.join(data_home,"裁剪数据",date)
@@ -573,6 +586,9 @@ def cut_imgs_for_cls(data_home,date):
 def gen_train_val_cls(data_home,date):
     '''
     生成分类训练和验证数据集
+    args:
+        data_home: 数据根目录
+        date:   数据日期
     '''
     data_path = os.path.join(data_home,"分类数据",date).replace("\\","/")
     dirs = [dir for dir in os.listdir(data_path) if os.path.isdir(os.path.join(data_path,dir))]
@@ -610,6 +626,8 @@ def gen_train_val_cls(data_home,date):
 def pre_label_cls(data_home):
     '''
     用预训练分类模型做预标注
+    args:
+        data_home: 数据根目录
     '''
     cls_model_path = "weight/best_model_5_2.onnx"
     label_list_path = "weight/label_list_cls.txt"
@@ -690,12 +708,12 @@ def pre_label_for_multicls_det():
     用预训练的分类模型对目标检测的类别标签做预标注
     '''
     # 初始化分类模型
-    cls_model_path = "weight/best_model_5_mc.onnx"
+    cls_model_path = "weight/best_model_5_mc_1000.onnx"
     label_list_path = "weight/label_list_cls.txt"
     cls_net = ResNet(model_pb_path = cls_model_path,label_path = label_list_path)
     data_home  = "Y:/zx-AI_lab/RPA/页面元素检测/元素分类/原始数据/2023_02_21"
 
-    save_home = "F:/Datasets/UIED/元素检测/原始标注数据/2023_02_21"
+    save_home = "Y:/zx-AI_lab/RPA/页面元素检测/元素检测/原始数据/2023_02_21_mc"
 
     dirs = os.listdir(data_home)
     for dir in dirs:
@@ -758,6 +776,187 @@ def pre_label_for_multicls_det():
             save_xml_path = save_xmls_path+"/"+img_name+".xml"
             tree.write(save_xml_path, encoding="utf-8",xml_declaration=True)
 
+def pre_label_for_block_ELEs(data_home,save_path):
+    '''
+    用训练好的模型做block和elements检测，用于整合输出
+    args:
+        data_home: 数据根目录
+        save_path: 打标类型，属于区块还是元素
+    '''
+    #=========== 初始化模型 =============
+    
+    block_det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0220.onnx"
+    block_label_path = "weight/label_list.txt"
+   
+    ELE_det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0227.onnx"
+    ELE_label_path = "weight/label_list_ELE.txt"
+
+    block_det_net = PicoDet(model_pb_path = block_det_model_path,label_path = block_label_path)
+    ELE_det_net = PicoDet(model_pb_path = ELE_det_model_path,label_path = ELE_label_path,type="ELE")
+
+    # 数据目录
+    make_dirs(save_path)
+    dirs = [dir for dir in os.listdir(data_home) if os.path.isdir(os.path.join(data_home,dir))]
+    
+    for dir in dirs:
+        imgs_path = os.path.join(data_home,dir,"imgs")        # 截的页面长图文件夹
+        # 结果保存路径
+        save_imgs_path = os.path.join(save_path,dir,"imgs")     # 裁剪出来的小图
+        save_xmls_path = os.path.join(save_path,dir,"xmls")     # 裁剪出来的小图对应的标签
+        make_dirs(save_imgs_path)
+        make_dirs(save_xmls_path)
+
+        height = 1080
+        imgs = os.listdir(imgs_path)
+        pbar = tqdm(total=len(imgs))
+
+        def cut_save(img):
+        # for img in tqdm(imgs):
+            img_name = img.split(".")[0]
+            img_path = os.path.join(imgs_path,img)
+            try:
+                # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
+                img = cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+            except:
+                # continue
+                return
+            pbar.update(1)
+            # 裁剪
+            img_num = 0
+            ratio = 0.3
+            # 每次向下走一步（这里步长设为一屏）
+            step = int(height * ratio)
+            h,w = img.shape[:2]
+            # 裁剪的个数
+            total_num = h // step
+            min_h = int(height * 2/3)
+
+            while img_num < total_num:
+                # 裁剪图片
+                y_start = img_num*step
+                y_end = img_num*step+height
+                save_img = img[y_start : y_end,:]
+                im_h,im_w = save_img.shape[:2]
+                # 裁剪出来的图片高度小于阈值不要
+                if im_h < min_h:
+                    break
+                # block检测
+                block_det_results = block_det_net.infer(save_img)
+                cls_list = []
+                box_list = []
+                for item in block_det_results:
+                    conf = item['confidence']
+                    if conf < 0.6:
+                        continue
+                    cls_name = item["classname"]
+                    # cls_name = "ELE"
+                    box = item["box"]
+                    cls_list.append(cls_name)
+                    box_list.append(box)
+                # 元素检测
+                ELE_det_results = ELE_det_net.infer(save_img)
+                for item in ELE_det_results:
+                    conf = item['confidence']
+                    if conf < 0.6:
+                        continue
+                    cls_name = item["classname"]
+                    # cls_name = "ELE"
+                    box = item["box"]
+                    cls_list.append(cls_name)
+                    box_list.append(box)
+                
+                save_img_name = img_name+"_"+str(img_num)
+                save_img_path = os.path.join(save_imgs_path,save_img_name+".jpg")
+                # # 保存图片和标签
+                # cv2.imencode('.jpg', save_img)[1].tofile(save_img_path)
+                # write_xml(save_img_path,save_img_name,save_img_path,im_w,im_h,len(cls_list),cls_list,box_list,save_xmls_path,0)
+                # img_num += 1
+
+        # 创建多线程处理
+        pbar = tqdm(total=len(imgs))
+        pool = ThreadPool(processes=10)
+        pool.map(cut_save, imgs)
+        pool.close()
+        pool.join()
+        pbar.close()
+
+    pass
+
+def infer_block_ELEs(data_home,save_path):
+    '''
+    用训练好的模型做block和elements检测，用于整合输出
+    args:
+        test_home: 数据根目录
+        save_path: 打标类型，属于区块还是元素
+    '''
+    #=========== 初始化模型 =============
+    
+    block_det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0220.onnx"
+    block_label_path = "weight/label_list.txt"
+   
+    ELE_det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0227.onnx"
+    ELE_label_path = "weight/label_list_ELE.txt"
+
+    block_det_net = PicoDet(model_pb_path = block_det_model_path,label_path = block_label_path)
+    ELE_det_net = PicoDet(model_pb_path = ELE_det_model_path,label_path = ELE_label_path,type="ELE")
+
+    # 数据目录
+    make_dirs(save_path)
+    # 短图文件夹
+    imgs = os.listdir(data_home)        
+
+    def func(img):
+    # for img in imgs:
+        img_name = img.split(".")[0]
+        img_path = os.path.join(data_home,img)
+        try:
+            # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
+            img_data= cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+        except:
+            # continue
+            return
+        pbar.update(1)
+        
+        im = Image.fromarray(img_data[:,:,::-1])
+        # block检测
+        block_det_results = block_det_net.infer(img_data)
+        box_list = []
+        for item in block_det_results:
+            conf = item['confidence']
+            if conf < 0.6:
+                continue
+            cls_name = item["classname"]
+            cls_id = item['classid']
+            # cls_name = "ELE"
+            box = item["box"]
+            box_list.append([cls_id,conf,*box])
+        im = draw_box(im,np.array(box_list),labels=block_det_net.classes)
+        
+        box_list = []
+        # 元素检测
+        ELE_det_results = ELE_det_net.infer(img_data)
+        for item in ELE_det_results:
+            conf = item['confidence']
+            if conf < 0.6:
+                continue
+            cls_name = item["classname"]
+            cls_id = item['classid']
+            # cls_name = "ELE"
+            box = item["box"]
+            box_list.append([cls_id,conf,*box])
+        im = draw_box(im,np.array(box_list),labels=ELE_det_net.classes)
+
+        save_img_path = os.path.join(save_path,img+".jpg")
+        im.save(save_img_path)
+
+    # 创建多线程处理
+    pbar = tqdm(total=len(imgs))
+    pool = ThreadPool(processes=10)
+    pool.map(func, imgs)
+    pool.close()
+    pool.join()
+    pbar.close()
+
 
 if __name__ == "__main__":
     
@@ -788,7 +987,7 @@ if __name__ == "__main__":
     data_home = "F:/Datasets/UIED/元素分类"
     date = "2023_02_21"
     # cut_imgs_for_cls(data_home,date)
-    gen_train_val_cls(data_home,date)
+    # gen_train_val_cls(data_home,date)
 
     #============= 用训练好的分类模型做分类预测 ==========================
     data_home = "F:/Datasets/UIED/元素分类/裁剪数据/2023_02_21"
@@ -797,7 +996,30 @@ if __name__ == "__main__":
     #============= 用训练好的分类模型给检测数据打标 ==========================
     # 单类别长图打标成多类别
     # pre_label_for_multicls_det()
+
     # 长图裁剪成短图用于训练
-    # cut_imgs_xmls(date,home)
+    home = "F:/Datasets/UIED/元素检测"
+    # 指定哪些标签要排除
+    exclude_labels = ["text"]
+    # 长图裁剪成短图
+    # cut_imgs_xmls(date,home,exclude_labels=exclude_labels)
+    
+    #生成检测训练数据
+    date = "2023_02_21"
+    type= "ELE"
+    # gen_train_val2(date,home,type)
+    # # 生成标签列表
+    # gen_label_list(date,home,type)
 
     # match()
+
+    #============= 用训练好的block检测模型和多类元素检测模型做预测 =================
+
+    data_home = "F:/Datasets/UIED/元素检测/原始标注数据/2023_02_21"
+    save_path = data_home+"_block_ELE"
+    # pre_label_for_block_ELEs(data_home,save_path)
+
+    # 对裁剪好的图做预测
+    data_home = "F:/Datasets/UIED/元素检测/裁剪标注数据/2023_02_21/achong/imgs"
+    save_path = "F:/Datasets/UIED/元素检测/测试结果/block_ELE_infer"
+    infer_block_ELEs(data_home,save_path)
