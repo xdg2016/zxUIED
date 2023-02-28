@@ -1,5 +1,3 @@
-
-
 import os
 import random
 import cv2
@@ -11,6 +9,8 @@ from picodet import PicoDet
 from multiprocessing.dummy import Pool as ThreadPool
 import xml.dom.minidom
 from utils import *
+from lxml.etree import SubElement as subElement
+from lxml.etree import Element, tostring, parse
 
 def gen_train_val(data_home):
     '''
@@ -122,18 +122,23 @@ def gen_label_list(date,data_home,type):
         xml_dir = f"{data_home}/trainval_data/UIED_{date}/train_val"
     f_labels = open(os.path.join(xml_dir,'../',"label_list.txt"),"w")
     xmls = os.listdir(xml_dir+"/xmls")
-    clses = [] 
+    clses = []      # 记录类别
+    cls_nums = {}   # 统计每个类别数量
     for xml in xmls:
         xml_path = os.path.join(xml_dir+"/xmls",xml)
         tree,root = read_xml(xml_path)
         objs = tree.findall('object')
         for i,obj in enumerate(objs):
             cls_name = obj.find('name').text
+            if cls_name in cls_nums:
+                cls_nums[cls_name] += 1
+            else:
+                cls_nums[cls_name] = 1
             clses.append(cls_name)
         
     print("classes: ")
     for cls in set(clses):
-        print(cls)
+        print(cls,cls_nums[cls])    # 类别 该类别样本数量 
         f_labels.write(cls+"\n")
 
 def write_xml(folder: str, img_name: str, path: str, img_width: int, img_height: int, tag_num: int, tag_names: str, box_list:list,save_path:str,url_id:int=0):
@@ -878,8 +883,8 @@ def infer_block_ELEs(data_home,save_path):
     block_det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0220.onnx"
     block_label_path = "weight/label_list.txt"
    
-    ELE_det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0227.onnx"
-    ELE_label_path = "weight/label_list_ELE.txt"
+    ELE_det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0228.onnx"
+    ELE_label_path = "weight/label_list_ELE_0228.txt"
 
     block_det_net = PicoDet(model_pb_path = block_det_model_path,label_path = block_label_path)
     ELE_det_net = PicoDet(model_pb_path = ELE_det_model_path,label_path = ELE_label_path,type="ELE")
@@ -887,7 +892,7 @@ def infer_block_ELEs(data_home,save_path):
     # 数据目录
     make_dirs(save_path)
     # 短图文件夹
-    imgs = os.listdir(data_home)        
+    imgs = [img for img in os.listdir(data_home) if os.path.isfile(os.path.join(data_home,img))]        
 
     def func(img):
     # for img in imgs:
@@ -914,7 +919,10 @@ def infer_block_ELEs(data_home,save_path):
             # cls_name = "ELE"
             box = item["box"]
             box_list.append([cls_id,conf,*box])
-        im = draw_box(im,np.array(box_list),labels=block_det_net.classes)
+
+        # 合并5个类别
+        labels = block_det_net.classes+ELE_det_net.classes
+        im = draw_box(im,np.array(box_list),labels=labels)
         
         box_list = []
         # 元素检测
@@ -924,14 +932,16 @@ def infer_block_ELEs(data_home,save_path):
             if conf < 0.6:
                 continue
             cls_name = item["classname"]
-            cls_id = item['classid']
+            cls_id = item['classid'] + 1
             # cls_name = "ELE"
             box = item["box"]
             box_list.append([cls_id,conf,*box])
-        im = draw_box(im,np.array(box_list),labels=ELE_det_net.classes)
 
-        save_img_path = os.path.join(save_path,img+".jpg")
-        im.save(save_img_path)
+        if len(box_list) > 0:
+            im = draw_box(im,np.array(box_list),labels=labels)
+
+            save_img_path = os.path.join(save_path,img)
+            im.save(save_img_path)
 
     # 创建多线程处理
     pbar = tqdm(total=len(imgs))
@@ -993,6 +1003,124 @@ def match():
     pool.join()
     pbar.close()
 
+def random_paste_items(train_data_path, labels_path ,labels=[],paste_num = 5):
+    '''
+    针对部分类别占比较少的元素，使用随机重复粘贴的方式来增加样本数
+    args:
+        train_data_path: 训练数据路径
+        labels_path: 分好类的标签文件夹
+        labels: 要粘贴的标签类别
+        paste_num: 随机贴几个
+    returns:
+        None
+    '''
+    save_path = os.path.dirname(train_data_path)+"_paste"
+    img_save_dir = os.path.join(save_path,"trainval/imgs")
+    xml_save_dir = os.path.join(save_path,"trainval/xmls")
+    make_dirs(save_path)
+    make_dirs(img_save_dir)
+    make_dirs(xml_save_dir)
+    imgs_path = os.path.join(train_data_path,"imgs")
+    xmls_path = os.path.join(train_data_path,"xmls")
+    imgs = [img for img in os.listdir(imgs_path) if os.path.splitext(img)[-1] in ['.jpg','.png']]
+    date = "2023_02_21"
+    f_train = open(os.path.join(save_path,"train.txt"),"w")
+    f_val = open(os.path.join(save_path,"val.txt"),"w")
+    def func(img):
+        pbar.update(1)
+        img_path = os.path.join(imgs_path,img)
+        img_name = os.path.splitext(img)[0]
+        try:
+            # img = cv2.imdecode(img_path,cv2.IMREAD_COLOR)
+            img_data= cv2.imdecode(np.fromfile(img_path,dtype=np.uint8),-1)
+        except:
+            # continue
+            return
+        imgh,imgw,_ = img_data.shape
+        xml_path = os.path.join(xmls_path,img_name+".xml")
+        tree,root = read_xml(xml_path)
+        objs = tree.findall('object')
+        cls_list = []
+        box_list = []
+        for i,obj in enumerate(objs):
+            cls_name = obj.find('name').text
+            cls_list.append(cls_name)
+            bndbox = obj.find('bndbox')
+            xmin = int(float(bndbox.find('xmin').text))
+            ymin = int(float(bndbox.find('ymin').text))
+            xmax = int(float(bndbox.find('xmax').text))
+            ymax = int(float(bndbox.find('ymax').text))
+            box_list.append([xmin,ymin,xmax,ymax])
+        box_list = np.array(box_list)
+        # 遍历所有要贴的标签
+        for label in labels:
+            label_path = os.path.join(labels_path,date+"_"+label)
+            labelimgs = [img for img in os.listdir(label_path) if os.path.splitext(img)[-1] in ['.jpg','.png']]
+            random.shuffle(labelimgs)
+            num = 0
+            while num < paste_num:
+                label_img = random.choice(labelimgs)
+                label_img_data = cv2.imdecode(np.fromfile(os.path.join(label_path,label_img),dtype=np.uint8),-1)
+                h,w,c = label_img_data.shape
+                delta = 3
+                lxmin = random.randint(0,imgw - w)
+                lymin = random.randint(0,imgh - h)
+                lxmax = lxmin + w
+                lymax = lymin + h
+                
+                # 判断是否空白位置
+                ltcor = ((box_list[:,0] <= lxmin) & (lxmin <= box_list[:,2])) & ((box_list[:,1] <= lymin) & (lymin< box_list[:,3]))
+                rbcor = ((box_list[:,0] <= lxmax) & (lxmin <= box_list[:,2])) & ((box_list[:,1] <= lymax) & (lymin< box_list[:,3]))
+                # 背景纯色
+                bg = img_data[lymin:lymax,lxmin:lxmax]
+                pure = (bg.sum() == bg[0,0].sum() * bg.shape[0]*bg.shape[1])
+                if ltcor.sum()== 0 and rbcor.sum() == 0 and pure :
+                    
+                    img_data[lymin:lymax,lxmin:lxmax] = label_img_data
+                    node_object = subElement(root, 'object')            #在根节点node_root下面添加名为'object'的子节点
+                    node_object_name = subElement(node_object, 'name')  #在根节点node_root的子节点object下面继续添加子节点object的子节点'name'
+                    node_object_name.text = label                       #设定该节点的文本text信息
+                    node_object_pose = subElement(node_object, 'pose')
+                    node_object_pose.text = "Unspecified"
+                    node_object_truncated = subElement(node_object, 'truncated')
+                    node_object_truncated.text = '%s' % int(0)
+                    node_object_difficult = subElement(node_object, 'difficult')
+                    node_object_difficult.text = '%s' % int(0)
+                    # object坐标
+                    node_bndbox = subElement(node_object, 'bndbox')
+                    node_xmin = subElement(node_bndbox, 'xmin')
+                    node_xmin.text = '%s' % int(lxmin + delta)
+                    node_ymin = subElement(node_bndbox, 'ymin')
+                    node_ymin.text = '%s' % int(lymin + delta)
+                    node_xmax = subElement(node_bndbox, 'xmax')
+                    node_xmax.text = '%s' % int(lxmax - delta)
+                    node_ymax = subElement(node_bndbox, 'ymax')
+                    node_ymax.text = '%s' % int(lymax - delta)
+                    labelbox = np.array([int(lxmin+delta),int(lymin+delta),int(lxmax+delta),int(lymax+delta)]).reshape(1,-1)
+                    box_list = np.concatenate((box_list,labelbox),0)
+                    num +=1
+
+        img_save_path = os.path.join(img_save_dir,img).replace("\\","/")
+        xml_save_path =os.path.join(xml_save_dir,img_name+".xml").replace("\\",'/')
+        cv2.imencode('.jpg', img_data)[1].tofile(img_save_path)
+        xml = tostring(root, pretty_print=True) #将修改后的xml节点信息导出
+        with open(xml_save_path,'wb') as f: #将修改后的xml节点信息覆盖掉修改前的
+            f.write(xml)
+        if random.random() < 0.8:
+            f_train.write(f"{img_save_path.replace(save_path+'/','')} {xml_save_path.replace(save_path+'/','')}\r")
+        else:
+            f_val.write(f"{img_save_path.replace(save_path+'/','')} {xml_save_path.replace(save_path+'/','')}\r")
+    
+    # 复制标签列表
+    shutil.copy(os.path.join(os.path.dirname(train_data_path),"label_list.txt"),os.path.join(save_path,"label_list.txt"))
+    # 创建多线程处理
+    pbar = tqdm(total=len(imgs))
+    pool = ThreadPool(processes=10)
+    pool.map(func, imgs)
+    pool.close()
+    pool.join()
+    pbar.close()
+
 if __name__ == "__main__":
     
     #=============== UIED原始数据处理和训练数据制作 ===================
@@ -1038,14 +1166,15 @@ if __name__ == "__main__":
     home = "F:/Datasets/UIED/元素检测"
     # 指定哪些标签要排除
     exclude_labels = ["text"]
+    date = "2023_02_21"
     # 长图裁剪成短图
     # cut_imgs_xmls(date,home,exclude_labels=exclude_labels)
     
-    #生成检测训练数据
-    date = "2023_02_21"
-    type= "ELE"
+    # #生成检测训练数据
+    # date = "2023_02_21"
+    # type= "ELE"
     # gen_train_val2(date,home,type)
-    # # 生成标签列表
+    # # # 生成标签列表
     # gen_label_list(date,home,type)
 
     #============= 用训练好的block检测模型和多类元素检测模型做预测 =================
@@ -1054,6 +1183,16 @@ if __name__ == "__main__":
     # pre_label_for_block_ELEs(data_home,save_path)
 
     # 对裁剪好的图做预测
-    data_home = "F:/Datasets/UIED/元素检测/裁剪标注数据/2023_02_21/achong/imgs"
-    save_path = "F:/Datasets/UIED/元素检测/测试结果/block_ELE_infer"
-    infer_block_ELEs(data_home,save_path)
+    data_home = "F:/Datasets/UIED/测试/imgs(1)"
+    save_path = "F:/Datasets/UIED/测试/imgs(1)_aniu_block_ELE_infer_noconf_0228"
+
+    # data_home = "F:/Datasets/UIED/tmp"
+    # save_path = "F:/Datasets/UIED/tmp/block_ELE_infer_noconf"
+    # infer_block_ELEs(data_home,save_path) 
+
+    #=============== 粘贴数据增强 =============================
+
+    trainval = "F:/Datasets/UIED/元素检测/trainval_data/UIED_ELE_2023_02_21/train_val"
+    labels_path = "F:/Datasets/UIED/元素分类/分类数据/2023_02_21"
+    labels = ['select']
+    random_paste_items(trainval,labels_path,labels)
