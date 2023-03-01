@@ -581,9 +581,9 @@ def pre_label_for_multicls_det():
     cls_model_path = "weight/ResNet50_5_mc_1000.onnx"
     label_list_path = "weight/label_list_cls.txt"
     cls_net = ResNet(model_pb_path = cls_model_path,label_path = label_list_path)
-    data_home  = "Y:/zx-AI_lab/RPA/页面元素检测/元素分类/原始数据/2023_02_21"
+    data_home  = "Y:/zx-AI_lab/RPA/页面元素检测/元素分类/原始数据/2023_02_27"
 
-    save_home = "Y:/zx-AI_lab/RPA/页面元素检测/元素检测/原始数据/2023_02_21_mc"
+    save_home = "Y:/zx-AI_lab/RPA/页面元素检测/元素检测/原始数据/2023_02_27"
 
     dirs = os.listdir(data_home)
     for dir in dirs:
@@ -883,7 +883,7 @@ def infer_block_ELEs(data_home,save_path):
     block_det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0220.onnx"
     block_label_path = "weight/label_list.txt"
    
-    ELE_det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0228.onnx"
+    ELE_det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0228_300e.onnx"
     ELE_label_path = "weight/label_list_ELE_0228.txt"
 
     block_det_net = PicoDet(model_pb_path = block_det_model_path,label_path = block_label_path)
@@ -922,7 +922,8 @@ def infer_block_ELEs(data_home,save_path):
 
         # 合并5个类别
         labels = block_det_net.classes+ELE_det_net.classes
-        im = draw_box(im,np.array(box_list),labels=labels)
+        if len(box_list) > 0:
+            im = draw_box(im,np.array(box_list),labels=labels)
         
         box_list = []
         # 元素检测
@@ -1183,16 +1184,16 @@ if __name__ == "__main__":
     # pre_label_for_block_ELEs(data_home,save_path)
 
     # 对裁剪好的图做预测
-    data_home = "F:/Datasets/UIED/测试/imgs(1)"
-    save_path = "F:/Datasets/UIED/测试/imgs(1)_aniu_block_ELE_infer_noconf_0228"
+    data_home = "F:/Datasets/UIED/元素检测/裁剪标注数据/2023_02_21/aniu/imgs"
+    save_path = "F:/Datasets/UIED/元素检测/测试结果/aniu_block_ELE_infer_noconf_0228_300e"
 
     # data_home = "F:/Datasets/UIED/tmp"
     # save_path = "F:/Datasets/UIED/tmp/block_ELE_infer_noconf"
-    # infer_block_ELEs(data_home,save_path) 
+    infer_block_ELEs(data_home,save_path) 
 
     #=============== 粘贴数据增强 =============================
 
     trainval = "F:/Datasets/UIED/元素检测/trainval_data/UIED_ELE_2023_02_21/train_val"
     labels_path = "F:/Datasets/UIED/元素分类/分类数据/2023_02_21"
     labels = ['select']
-    random_paste_items(trainval,labels_path,labels)
+    # random_paste_items(trainval,labels_path,labels)

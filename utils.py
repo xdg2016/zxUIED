@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
+from lxml.etree import parse
 import os
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw,ImageFont
 
 def read_xml(xml_path):
     '''
@@ -9,7 +10,7 @@ def read_xml(xml_path):
         xml_path: xml文件路径
     '''
     try:
-        tree = ET.parse(xml_path)
+        tree = parse(xml_path)
         root = tree.getroot()
         return tree,root
     except:
@@ -23,7 +24,18 @@ def make_dirs(path):
     '''
     if not os.path.exists(path):
         os.makedirs(path)
+
+def get_color_map_list(num_classes):
+    """
+    Args:
+        num_classes (int): number of class
+    Returns:
+        color_map (list): RGB color list
+    """
     
+    color_map = [(0,230,0),(255,255,0),(0,255,255),(255,0,255),(255,0,0)]
+    return color_map
+
 def get_color_map_list(num_classes):
     """
     Args:
@@ -55,12 +67,16 @@ def draw_box(im, np_boxes, labels, threshold=0.5):
     Returns:
         im (PIL.Image.Image): visualized image
     """
-    draw_thickness = min(im.size) // 320
+    draw_thickness = min(im.size) // 300
     draw = ImageDraw.Draw(im)
     clsid2color = {}
     color_list = get_color_map_list(len(labels))
     expect_boxes = (np_boxes[:, 1] > threshold) & (np_boxes[:, 0] > -1)
     np_boxes = np_boxes[expect_boxes, :]
+
+    font_path = "F:/Datasets/matting/Image_Text/font/微软雅黑.ttf"
+    font_size = 15
+    font = ImageFont.truetype(font_path, font_size)
 
     for dt in np_boxes:
         clsid, bbox, score = int(dt[0]), dt[2:], dt[1]
@@ -89,10 +105,14 @@ def draw_box(im, np_boxes, labels, threshold=0.5):
             ymin = min(y1, y2, y3, y4)
 
         # draw label
-        text = "{} {:.4f}".format(labels[clsid], score)
+        # text = "{} {:.4f}".format(labels[clsid], score)
+        text = "{}".format(labels[clsid])
         tw, th = draw.textsize(text)
+        tw = len(text)*int(font_size*2/3)
+        th = font_size
         draw.rectangle(
             [(xmin + 1, ymin - th), (xmin + tw + 1, ymin)], fill=color)
-        draw.text((xmin + 1, ymin - th), text, fill=(255, 255, 255))
+        # draw.text((xmin + 1, ymin - th), text, fill=(255, 255, 255))
+        draw.text((xmin + 1, ymin - th), text, fill=(0, 0, 0),font=font)
     return im
 
