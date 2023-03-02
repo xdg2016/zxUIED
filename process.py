@@ -11,6 +11,7 @@ import xml.dom.minidom
 from utils import *
 from lxml.etree import SubElement as subElement
 from lxml.etree import Element, tostring, parse
+import json
 
 def gen_train_val(data_home):
     '''
@@ -869,12 +870,120 @@ def infer_short(type,test_path):
         cv2.imencode('.jpg', draw_img)[1].tofile(save_img_path)
         img_num += 1 
 
-def infer_block_ELEs(data_home,save_path):
+def extract_merge_info(info):
+    '''
+    合并block和元素信息
+    args:
+        info: 所有检测结果列表
+    return:
+        merge_info: 合并后的层级关系信息
+    '''
+    th = 0.9
+    cal_info = []
+    for i in range(len(info)):
+        
+        item = info[i]
+        name,xmin,ymin,xmax,ymax = item
+        w = xmax-xmin
+        h = ymax-ymin
+        boxa = (xmin,ymin,w,h)
+        sum_tree = 0
+        sum_index = []
+        for j in range(len(info)):
+            item1 = info[j]
+            name1,xmin1,ymin1,xmax1,ymax1 = item1
+            w1 = xmax1-xmin1
+            h1 = ymax1-ymin1
+            boxb = (xmin1,ymin1,w1,h1)
+            if i==j:
+                continue
+            else:
+
+                iou = cal_iou(boxa,boxb)
+                overlap = cal_overlap(boxa,boxb)
+                if overlap>=th and iou<1.0:
+                    # print(iou,overlap)
+                    sum_tree+=1
+                    sum_index.append(j)
+        
+        cal_info.append((name,xmin,ymin,xmax,ymax,sum_tree,sum_index))
+
+
+
+    merge_info = []
+
+    ## 获取树的最大层数
+    for i in range(len(cal_info)):
+        item = cal_info[i]
+        info=dict()
+        tree_index = []
+        name,xmin,ymin,xmax,ymax,sum_tree,sum_index = item
+        for j in range(len(cal_info)):
+            item1 =cal_info[j]
+            name1,xmin1,ymin,xmax1,ymax1,sum_tree1,sum_index1 = item1
+            if(sum_tree+1==sum_tree1):
+                if(i in sum_index1):
+                    tree_index.append(j)
+        
+        merge_info.append((name,xmin,ymin,xmax,ymax,sum_tree,tree_index))
+
+    return merge_info
+
+def process_merge_info(merge_info):
+    '''
+    根据合并后的层级关系信息，做后处理，对信息进行结构化
+    args:
+        merge_info: 合并后的层级关系信息
+    return:
+        result: 组织好的结构化信息
+    '''
+    # 计算树的最大层数
+
+    tree_depth = [ele[5] for ele in merge_info]
+    max_tree_depth = np.max(tree_depth)
+
+    new_info = []
+    for item in merge_info:
+        contains=[]
+        (name,xmin,ymin,xmax,ymax,sum_tree,tree_index) = item
+        new_info.append((name,xmin,ymin,xmax,ymax,sum_tree,contains))
+    
+    for j in range(max_tree_depth-1,-1,-1):
+        for i in range(len(merge_info)):
+            item = merge_info[i]
+            (name,xmin,ymin,xmax,ymax,sum_tree,tree_index) = item
+            if sum_tree==j:
+                if(len(tree_index)>0):
+                    for index in tree_index:
+                        new_info[i][6].append((new_info[index]))
+    
+    result = []
+    for i in range(len(new_info)):
+        item = new_info[i]
+        name,xmin,ymin,xmax,ymax,sum_tree,contains = item
+        if sum_tree==0:
+            result.append(item)
+    return result
+
+def merge_info(info):
+    '''
+    合并block和元素信息，并做结构化
+    args:
+        info: 所有box列表
+    returns:
+        merge_info: 结构化信息
+    '''
+    merge_info = extract_merge_info(info)
+    merge_info = process_merge_info(merge_info)
+    return merge_info
+
+def infer_block_ELEs(data_home,save_path,gen_json = False):
     '''
     用训练好的模型做block和elements检测推理
     args:
         test_home: 数据根目录
         save_path: 打标类型，属于区块还是元素
+        gen_json: 是否生成json文件,json文件与图片同路径
     returns:
         None
     '''
@@ -883,7 +992,7 @@ def infer_block_ELEs(data_home,save_path):
     block_det_model_path = "weight/ppyoloe_plus_crn_m_80e_coco_UIED_0220.onnx"
     block_label_path = "weight/label_list.txt"
    
-    ELE_det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0228_300e.onnx"
+    ELE_det_model_path = "weight/ppyoloe_crn_s_p2_alpha_80e_UIED_ELE_0228_paste.onnx"
     ELE_label_path = "weight/label_list_ELE_0228.txt"
 
     block_det_net = PicoDet(model_pb_path = block_det_model_path,label_path = block_label_path)
@@ -907,6 +1016,9 @@ def infer_block_ELEs(data_home,save_path):
         pbar.update(1)
         
         im = Image.fromarray(img_data[:,:,::-1])
+
+        info = []
+
         # block检测
         block_det_results = block_det_net.infer(img_data)
         box_list = []
@@ -919,6 +1031,7 @@ def infer_block_ELEs(data_home,save_path):
             # cls_name = "ELE"
             box = item["box"]
             box_list.append([cls_id,conf,*box])
+            info.append([cls_name,*box])
 
         # 合并5个类别
         labels = block_det_net.classes+ELE_det_net.classes
@@ -937,12 +1050,17 @@ def infer_block_ELEs(data_home,save_path):
             # cls_name = "ELE"
             box = item["box"]
             box_list.append([cls_id,conf,*box])
+            info.append([cls_name,*box])
 
         if len(box_list) > 0:
             im = draw_box(im,np.array(box_list),labels=labels)
-
             save_img_path = os.path.join(save_path,img)
             im.save(save_img_path)
+            # 是否生成json,保存路径与图片同目录
+            if gen_json:
+                merged_info = merge_info(info)
+                with open(os.path.join(save_path,f"{img_name}.json"),'w',encoding='utf-8') as f:
+                    json.dump(merged_info,f)
 
     # 创建多线程处理
     pbar = tqdm(total=len(imgs))
@@ -1184,12 +1302,12 @@ if __name__ == "__main__":
     # pre_label_for_block_ELEs(data_home,save_path)
 
     # 对裁剪好的图做预测
-    data_home = "F:/Datasets/UIED/元素检测/裁剪标注数据/2023_02_21/aniu/imgs"
-    save_path = "F:/Datasets/UIED/元素检测/测试结果/aniu_block_ELE_infer_noconf_0228_300e"
+    data_home = "F:/Datasets/UIED/元素检测/裁剪标注数据/2023_02_21/achong/imgs"
+    save_path = "F:/Datasets/UIED/元素检测/测试结果/achong_block_ELE_infer_noconf_0228_paste"
 
     # data_home = "F:/Datasets/UIED/tmp"
     # save_path = "F:/Datasets/UIED/tmp/block_ELE_infer_noconf"
-    infer_block_ELEs(data_home,save_path) 
+    infer_block_ELEs(data_home,save_path,True) 
 
     #=============== 粘贴数据增强 =============================
 

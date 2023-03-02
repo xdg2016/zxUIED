@@ -36,7 +36,7 @@ def get_color_map_list(num_classes):
     color_map = [(0,230,0),(255,255,0),(0,255,255),(255,0,255),(255,0,0)]
     return color_map
 
-def get_color_map_list(num_classes):
+def get_color_map_list_(num_classes):
     """
     Args:
         num_classes (int): number of class
@@ -116,3 +116,38 @@ def draw_box(im, np_boxes, labels, threshold=0.5):
         draw.text((xmin + 1, ymin - th), text, fill=(0, 0, 0),font=font)
     return im
 
+def cal_iou(boxa, boxb):
+    x1, y1, w1, h1 = boxa
+    x2, y2, w2, h2 = boxb
+    if (x1 > x2 + w2):
+        return 0
+    if (y1 > y2 + h2):
+        return 0
+    if (x1 + w1 < x2):
+        return 0
+    if (y1 + h1 < y2):
+        return 0
+    colInt = abs(min(x1 + w1, x2 + w2) - max(x1, x2))
+    rowInt = abs(min(y1 + h1, y2 + h2) - max(y1, y2))
+    overlap_area = colInt * rowInt
+    area1 = w1 * h1
+    area2 = w2 * h2
+    return overlap_area / (area1 + area2 - overlap_area)
+
+def cal_overlap(boxa, boxb):
+    x1, y1, w1, h1 = boxa
+    x2, y2, w2, h2 = boxb
+    if (x1 > x2 + w2):
+        return 0
+    if (y1 > y2 + h2):
+        return 0
+    if (x1 + w1 < x2):
+        return 0
+    if (y1 + h1 < y2):
+        return 0
+    colInt = abs(min(x1 + w1, x2 + w2) - max(x1, x2))
+    rowInt = abs(min(y1 + h1, y2 + h2) - max(y1, y2))
+    overlap_area = colInt * rowInt
+    area1 = w1 * h1
+    area2 = w2 * h2
+    return overlap_area / (area1)
